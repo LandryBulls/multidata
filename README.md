@@ -14,3 +14,5 @@ In the audio domain:
 * Get the appropriate files
 * Align mic audio to camera audio
 
+# TO-DO's
+* Change naming conventions of concatenated videos to include full experimental info (do this for all saved files)
