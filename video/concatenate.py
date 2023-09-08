@@ -13,7 +13,10 @@ def concatenate(cam_directory):
         for v in to_concat:
             f.write('file ' + str(v) + "\n")
 
-    concat_command = (f"ffmpeg -f concat -safe 0 -i {str(add_text)} -c copy "
-                      f"{str(cam_identity / 'concatenated' / f'{cam_identity}_concatenated.mp4')}")
+    concat_dir = camera_path / "concatenated"
+    os.makedirs(concat_dir, exist_ok=True)
+    filename = f'{str(concat_dir)}/{cam_identity}_concatenated.mp4'
+    concat_command = (f'ffmpeg -f concat -safe 0 -i {str(add_text)} -c copy {filename}')
+
     print(f"Concatenating {cam_identity}...")
     subprocess.run(concat_command, shell=True)
