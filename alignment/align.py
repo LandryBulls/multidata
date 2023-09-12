@@ -17,7 +17,6 @@ import subprocess
 import time
 from glob import glob
 
-# In[85]:
 def extract_audio(posix_video_path):
     print("Extracting audio from video files...\n")
     out_audio_path = str(derivative_path / str(os.path.basename(str(posix_video_path)[:-4]+'.wav')))
