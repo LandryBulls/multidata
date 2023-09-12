@@ -77,7 +77,7 @@ def trim_audio(posix_audio_path, start_time, end_time, output_path):
     """
     stringPath = str(posix_audio_path)
     duration = librosa.get_duration(filename=stringPath)
-    ffmpeg_command = f'ffmpeg -i {stringPath} -ss {start_time} -to {duration-end_time} -c copy {output_path}'
+    ffmpeg_command = f'ffmpeg -i {stringPath} -ss {start_time} -to {end_time} -c copy {output_path}'
     subprocess.run(ffmpeg_command, shell=True)
 
 def align_data(list_of_video_paths, list_of_mic_paths):
