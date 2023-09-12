@@ -17,7 +17,7 @@ In the audio domain:
 * Change naming conventions of concatenated videos to include full experimental info (do this for all saved files)
 * Add a function to check if the SD card is mounted
 * Fashion a means of determining which camera is in which position (e.g., front, back, left, right)
-* Continue to fine-tune alignment script
+* In align.py - fix end-of-file alignment (want everything same length)
 
 # DONE 
 * Align mic audio to camera audio 
