@@ -12,7 +12,12 @@ In the video domain:
 
 In the audio domain:
 * Get the appropriate files
-* Align mic audio to camera audio
 
 # TO-DO's
 * Change naming conventions of concatenated videos to include full experimental info (do this for all saved files)
+* Add a function to check if the SD card is mounted
+* Fashion a means of determining which camera is in which position (e.g., front, back, left, right)
+* Continue to fine-tune alignment script
+
+# DONE 
+* Align mic audio to camera audio 
