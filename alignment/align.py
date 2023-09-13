@@ -22,7 +22,10 @@ def extract_audio(posix_video_path):
     out_audio_path = str(derivative_path / str(os.path.basename(str(posix_video_path)[:-4]+'.wav')))
     ffmpeg_extract_audio(str(posix_video_path), out_audio_path)
     # librosa returns the numpy array as well as the sample rate
-    return librosa.load(out_audio_path, sr=None)
+    loaded = librosa.load(out_audio_path, sr=None)[0]
+    # delete the file
+    os.remove(out_audio_path)
+    return loaded
 
 def mix_audio(list_of_arrays):
     """
@@ -111,7 +114,7 @@ def align_data(list_of_video_paths, list_of_mic_paths):
     else:
         trim_status = 'mixed'
     
-    start_end_keys = dict(zip(['beginning_trim', 'ending_time'], [[], []]))
+    start_end_keys = dict(zip(['in', 'out'], [[], []]))
     all_files = list_of_video_paths + ['audio_trim']
     trim_times = {}
     for file in all_files:
@@ -122,10 +125,10 @@ def align_data(list_of_video_paths, list_of_mic_paths):
         # trim the beginning of the video files
         for vid, shift in zip(list_of_video_paths, shift_values):
             trim_amount = shift/video_audio_sr
-            trim_times[vid]['beginning_trim'] = trim_amount
+            trim_times[vid]['in'] = trim_amount
             video_durations[vid] = video_durations[vid] - trim_amount
             
-        trim_times['audio_trim']['beginning_trim'] = 0
+        trim_times['audio_trim']['in'] = 0
         
     elif trim_status == 'late':
         # trim the end of the video files
@@ -133,14 +136,14 @@ def align_data(list_of_video_paths, list_of_mic_paths):
         
         for vid, shift in zip(list_of_video_paths, shift_values):
             if shift == latest:
-                trim_times[vid]['beginning_trim'] = 0
+                trim_times[vid]['in'] = 0
             else:
                 trim_amount = (abs(latest) - abs(shift))/video_audio_sr
-                trim_times[vid]['beginning_trim'] = trim_amount
+                trim_times[vid]['in'] = trim_amount
                 video_durations[vid] = video_durations[vid] - trim_amount
         
         audio_trim = abs(latest)/mic_audio_sr
-        trim_times['audio_trim']['beginning_trim'] = audio_trim
+        trim_times['audio_trim']['in'] = audio_trim
         audio_duration = audio_duration - audio_trim
         
     elif trim_status == 'mixed':
@@ -148,32 +151,32 @@ def align_data(list_of_video_paths, list_of_mic_paths):
         earliest = max(shift_values)
         for vid, shift in zip(list_of_video_paths, shift_values):
             if shift == latest:
-                trim_times[vid]['beginning_trim'] = 0
+                trim_times[vid]['in'] = 0
             elif shift > 0:
                 trim_amount = (abs(shift)+abs(latest))/video_audio_sr
-                trim_times[vid]['beginning_trim'] = trim_amount
+                trim_times[vid]['in'] = trim_amount
                 video_durations[vid] = video_durations[vid] - trim_amount
             else:
                 trim_amount = (abs(latest) - abs(shift))/video_audio_sr
-                trim_times[vid]['beginning_trim'] = trim_amount
+                trim_times[vid]['in'] = trim_amount
                 video_durations[vid] = video_durations[vid] - trim_amount
         
         audio_trim = abs(latest)/mic_audio_sr
-        trim_times['audio_trim']['beginning_trim'] = audio_trim
+        trim_times['audio_trim']['in'] = audio_trim
         audio_duration = audio_duration - audio_trim
     
     # get ending trim times
     all_durations = list(video_durations.values()) + [audio_duration]    
     shortest = min(all_durations)
     for file in trim_times.keys():
-        trim_times[file]['ending_time'] = shortest + trim_times[file]['beginning_trim']
+        trim_times[file]['out'] = shortest + trim_times[file]['in']
         
     # trim the video files
     print("Trimming video files...\n")
     for vid in list_of_video_paths:
-        trim_video(vid, trim_times[vid]['beginning_trim'], trim_times[vid]['ending_time'], str(derivative_path / f'{os.path.basename(str(vid))[:-4]}_trimmed.mp4'))
+        trim_video(vid, trim_times[vid]['in'], trim_times[vid]['out'], str(derivative_path / f'{os.path.basename(str(vid))[:-4]}_trimmed.mp4'))
         
     # trim the audio files
     print("Trimming audio files...\n")
     for mic in list_of_mic_paths:
-        trim_audio(mic, trim_times['audio_trim']['beginning_trim'], trim_times['audio_trim']['ending_time'], str(derivative_path / f'{os.path.basename(str(mic))[:-4]}_trimmed.wav'))
+        trim_audio(mic, trim_times['audio_trim']['in'], trim_times['audio_trim']['out'], str(derivative_path / f'{os.path.basename(str(mic))[:-4]}_trimmed.wav'))
