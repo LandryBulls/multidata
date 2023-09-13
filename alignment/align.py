@@ -166,7 +166,7 @@ def align_data(list_of_video_paths, list_of_mic_paths):
     all_durations = list(video_durations.values()) + [audio_duration]    
     shortest = min(all_durations)
     for file in trim_times.keys():
-        trim_times[file]['ending_time'] = shortest
+        trim_times[file]['ending_time'] = shortest + trim_times[file]['beginning_trim']
         
     # trim the video files
     print("Trimming video files...\n")
