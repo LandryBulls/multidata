@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 import subprocess
 
-
 def concatenate(cam_directory):
     cam_identity = os.path.basename(cam_directory)
     camera_path = Path(cam_directory)
@@ -20,3 +19,10 @@ def concatenate(cam_directory):
 
     print(f"Concatenating {cam_identity}...")
     subprocess.run(concat_command, shell=True)
+
+# def apply_concatenation(data_dir):
+#     # get all camera directories
+#     cam_directories = [i for i in Path(data_dir).iterdir() if 'cam' in str(i)']
+#     derivative_path = data_dir / 'derivatives'
+#     for cam in cam_directories:
+#         concatenate(cam)
