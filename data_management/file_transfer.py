@@ -6,9 +6,10 @@ import os
 from io import BytesIO
 from tqdm import tqdm
 
-def copy_dest(source, dest)
-fsize = int(os.path.getsize(source))
-    with open(dest, 'rb') as f:
+def transfer_file(source, dest_path):
+    fsize = int(os.path.getsize(source))
+    dest = os.path.join(dest_path, os.path.basename(source))
+    with open(source, 'rb') as f:
         with open(dest, 'ab') as n:
             with tqdm(ncols=60, total=fsize, bar_format='{l_bar}{bar} | Remaining: {remaining}') as pbar:
                 buffer = bytearray()
