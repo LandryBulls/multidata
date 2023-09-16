@@ -109,6 +109,8 @@ def get_exp_of_day():
 def run_transfer():
     card_id = get_sd_cards()
     check_dates(card_id)
+
+    # make an RA account for this
     data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained') / f'{today}_{get_exp_of_day()+1:03d}'
     dialog = 'The following files will be transferred:\n\n'
     for card in card_id:
@@ -136,3 +138,9 @@ def run_transfer():
             print(f'Transferring file {filenum} of {total_num_files} files\n')
             print(f'Destination: {dest_path}\n')
             transfer_file(file, dest_path)
+
+    print('Transfer complete.')
+    return data_path
+
+
+
