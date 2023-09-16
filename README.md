@@ -5,7 +5,7 @@ This repository contains a set of scripts to accomplish the following tasks:
 * Add multiple checkpoints and logging of data dates, experiment numbers, etc
 * Isolate the project-specific files for organization
 * Use file metadata to organize into directory tree structure
-* Concatenate the appropriate files
+* Concatenate the appropriate video files
 * Run video alignment using the audio outputs associated with the video files
 * Pull survey data from Qualtrics and add to the folder
 
