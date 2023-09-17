@@ -19,7 +19,7 @@ from glob import glob
 
 def extract_audio(posix_video_path):
     print("Extracting audio from video files...\n")
-    out_audio_path = str(derivative_path / str(os.path.basename(str(posix_video_path)[:-4]+'.wav')))
+    out_audio_path = str(os.path.basename(str(posix_video_path)[:-4]+'.wav'))
     ffmpeg_extract_audio(str(posix_video_path), out_audio_path)
     # librosa returns the numpy array as well as the sample rate
     loaded = librosa.load(out_audio_path, sr=None)[0]
@@ -83,7 +83,13 @@ def trim_audio(posix_audio_path, start_time, end_time, output_path):
     ffmpeg_command = f'ffmpeg -i {stringPath} -ss {start_time} -to {end_time} -c copy {output_path}'
     subprocess.run(ffmpeg_command, shell=True)
 
-def align_data(list_of_video_paths, list_of_mic_paths):
+def align_data(data_dir):
+    data_dir = Path(data_dir)
+    list_of_video_paths = [str(i) for i in data_dir.iterdir() if Path(i).suffix.lower() == '.mp4']
+    list_of_video_paths = [i for i in list_of_video_paths if 'concatenated' in i]
+    list_of_mic_paths = [str(i) for i in (data_dir / 'audio').iterdir()]
+    derivative_path = data_dir / 'derivatives'
+    os.makedirs(str(derivative_path), exist_ok=True)
     # make mix of all mics
     print("Mixing microphone audio...\n")
     mic_mix = mix_audio([librosa.load(mic, sr=None)[0] for mic in list_of_mic_paths])

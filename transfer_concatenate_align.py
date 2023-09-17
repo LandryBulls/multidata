@@ -1,5 +1,5 @@
 from file_transfer import run_transfer
-from video.concatenate import apply_concatenation
+from video.video import apply_concatenation
 from alignment.align import align_data
 
 # run the file transfer and then get the paths to the files
