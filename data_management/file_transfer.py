@@ -97,12 +97,13 @@ def get_exp_of_day():
     # get all experiments of the day
     today = time.strftime('%Y-%m-%d')
     data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained')
-    exp_of_day = [exp for exp in glob(f'{data_path}/{today}*') if os.path.isdir(exp)]
+    existing_data_folders = [exp for exp in glob(f'{data_path}/{today}*') if os.path.isdir(exp)]
     # get the number of the last experiment of the day
-    if len(exp_of_day) == 0:
+    if len(existing_data_folders) == 0:
         exp_num = 0
     else:
-        exp_num = max([int(exp.split('_')[-1]) for exp in exp_of_day]) 
+        # brain don't work so good don't know if this is right
+        exp_num = max([int(exp.split('_')[-1]) for exp in existing_data_folders])-1
     return exp_num
 
 def delete_card(card_path):
@@ -114,14 +115,14 @@ def run_transfer():
     check_dates(card_id)
 
     # make an RA account for this
-    data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained') / f'{today}_{get_exp_of_day()+1:03d}'
+    data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained') / f'{today}_{get_exp_of_day():03d}'
     dialog = 'The following files will be transferred:\n\n'
     for card in card_id:
         dialog += f'{card} has {len(card_id[card]["files"])} files:\n'
         for file in card_id[card]['files']:
             dialog += f'\t{file}\n'
         dialog += '\n'
-    dialog += 'Is this ok? (y/n): '
+    dialog += 'Ready to transfer? (y/n): '
     ok = input(dialog)
     if ok.lower() == 'y':
         transfer_approved = True
@@ -129,29 +130,29 @@ def run_transfer():
     else:
         transfer_approved = False
         raise OSError('User aborted transfer')
-    
-    os.mkdir(data_path)
-    total_num_files = sum([len(card_id[card]['files']) for card in card_id])
-    filenum = 0
-    for card in card_id:
-        dest_path = data_path / card
-        os.mkdir(dest_path)
-        for file in card_id[card]['files']:
-            filenum += 1
-            print(f'Transferring file {filenum} of {total_num_files} files\n')
-            print(f'Destination: {dest_path}\n')
-            transfer_file(file, dest_path)
+    if transfer_approved:
+        os.mkdir(data_path)
+        total_num_files = sum([len(card_id[card]['files']) for card in card_id])
+        filenum = 0
+        for card in card_id:
+            dest_path = data_path / card
+            os.mkdir(dest_path)
+            for file in card_id[card]['files']:
+                filenum += 1
+                print(f'\n\nTransferring file {filenum} of {total_num_files} files\n')
+                print(f'Destination: {dest_path}\n')
+                transfer_file(file, dest_path)
 
-    print('Transfer complete.\n')
-    print(f"Data saved to {str(data_path)}\n")
-    #
-    # delete_approved = input('Delete files from SD cards? (y/n): ')
-    # if delete_approved.lower() == 'y':
-    #     for card in card_id:
-    #         delete_card(card)
-    #     print('Files deleted from SD cards')
-    # else:
-    #     print('SD card file deletion aborted. Files still on SD cards.')
+        print('Transfer complete.\n')
+        print(f"Data saved to {str(data_path)}\n")
+        #
+        # delete_approved = input('Delete files from SD cards? (y/n): ')
+        # if delete_approved.lower() == 'y':
+        #     for card in card_id:
+        #         delete_card(card)
+        #     print('Files deleted from SD cards')
+        # else:
+        #     print('SD card file deletion aborted. Files still on SD cards.')
 
     return data_path
 
