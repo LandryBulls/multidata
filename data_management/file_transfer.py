@@ -32,7 +32,7 @@ def get_all_files(card_path):
     all_files = []
     for root, dirs, files in os.walk(card_path):
         for file in files:
-            if '.Trashes' not in root:
+            if '.Trash' not in root:
                 all_files.append(os.path.join(root, file))
     return all_files
 
@@ -56,20 +56,20 @@ def get_sd_cards():
     for card in connected_sd_cards:
         if any(['.360' in file for file in get_all_files(card)]):
             files = [file for file in get_all_files(card) if '.360' in file]
-            card_id['360cam'] = {'card': str(card), 'files': files}
+            card_id['360cam'] = {'card_path': str(card), 'files': files}
         elif any(['.mp4' in file.lower() for file in get_all_files(card)]):
             cam_id+=1
             files = [file for file in get_all_files(card) if '.mp4' in file.lower()]
-            card_id[f'cam{cam_id}'] = {'card': str(card), 'files': files}
+            card_id[f'cam{cam_id}'] = {'card_path': str(card), 'files': files}
         elif any(['TRACK' in file for file in get_all_files(card)]):
             # TO DO: make sure audio files recorded on same date as video files
             files = [file for file in get_all_files(str(card)) if 'TRACK' in file]
-            card_id['audio'] = {'card': card, 'files': files}
+            card_id['audio'] = {'card_path': card, 'files': files}
         else:
             print(f'Unknown card: {card} contains the following files:')
             print(get_all_files(card))
 
-    assert len(card_id) == 4, 'Not all cards are connected'
+    assert len(card_id) == 4, f'Not all cards are connected\n Connected cards: {card_id.keys()}'
 
     return card_id
 
@@ -96,15 +96,18 @@ def check_dates(card_id):
 def get_exp_of_day():
     # get all experiments of the day
     today = time.strftime('%Y-%m-%d')
-    data_path = Path('/safestore/users/landry/SCRAP/data')
+    data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained')
     exp_of_day = [exp for exp in glob(f'{data_path}/{today}*') if os.path.isdir(exp)]
     # get the number of the last experiment of the day
     if len(exp_of_day) == 0:
         exp_num = 0
     else:
-        exp_num = max([int(exp.split('_')[-1]) for exp in exp_of_day])
+        exp_num = max([int(exp.split('_')[-1]) for exp in exp_of_day]) 
     return exp_num
 
+def delete_card(card_path):
+    os.chmod(card_path, 0o777)
+    shutil.rmtree(card_path)
 
 def run_transfer():
     card_id = get_sd_cards()
@@ -139,7 +142,17 @@ def run_transfer():
             print(f'Destination: {dest_path}\n')
             transfer_file(file, dest_path)
 
-    print('Transfer complete.')
+    print('Transfer complete.\n')
+    print(f"Data saved to {str(data_path)}\n")
+    #
+    # delete_approved = input('Delete files from SD cards? (y/n): ')
+    # if delete_approved.lower() == 'y':
+    #     for card in card_id:
+    #         delete_card(card)
+    #     print('Files deleted from SD cards')
+    # else:
+    #     print('SD card file deletion aborted. Files still on SD cards.')
+
     return data_path
 
 
