@@ -194,8 +194,9 @@ def run_transfer():
 
 # function for pulling qualtrics data to an experiment that already has AV data
 def pull_qualtrics_to_folder(data_path):
+    data_path = Path(data_path)
     # get the number of participants from the number of audio files
-    n_participants = len([file for file in os.listdir(data_path / 'audio') if '.wav' in file])
+    n_participants = len([file for file in os.listdir(data_path / 'audio') if '.wav' in file.lower()])
     # get the date of the experiment
     date = os.path.basename(data_path).split('_')[0]
     # get the experiment number
