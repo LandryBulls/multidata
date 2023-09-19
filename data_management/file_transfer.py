@@ -11,6 +11,7 @@ import time
 from io import BytesIO
 from tqdm import tqdm
 import warnings
+from qualtrics.pull_qualtrics import get_survey_data
 
 today = time.strftime('%Y-%m-%d')
 def transfer_file(source, dest_path):
@@ -102,9 +103,12 @@ def get_exp_of_day():
     if len(existing_data_folders) == 0:
         exp_num = 0
     else:
-        # brain don't work so good don't know if this is right
-        exp_num = max([int(exp.split('_')[-1]) for exp in existing_data_folders])-1
+        # get the number of the last experiment of the day
+        exp_num = f'{len(existing_data_folders):03d}'
+
     return exp_num
+
+exp_num = get_exp_of_day()
 
 def delete_card(card_path):
     os.chmod(card_path, 0o777)
@@ -112,10 +116,16 @@ def delete_card(card_path):
 
 def run_transfer():
     card_id = get_sd_cards()
+    # get number of participants based on number of microphone tracks
+    n_participants = len(card_id['audio']['files'])
+
+    print(f'Found {n_participants} participants')
+
+    # make sure all files have the same creation date
     check_dates(card_id)
 
     # make an RA account for this
-    data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained') / f'{today}_{get_exp_of_day():03d}'
+    data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained') / f'{today}_{exp_num}'
     dialog = 'The following files will be transferred:\n\n'
     for card in card_id:
         dialog += f'{card} has {len(card_id[card]["files"])} files:\n'
@@ -143,8 +153,28 @@ def run_transfer():
                 print(f'Destination: {dest_path}\n')
                 transfer_file(file, dest_path)
 
-        print('Transfer complete.\n')
-        print(f"Data saved to {str(data_path)}\n")
+        print('##########################\n')
+        print('Transfer complete!\n')
+        print(f"Audiovisual data saved to {str(data_path)}\n")
+
+        print('##########################\n')
+        print('Pulling survey data from Qualtrics...\n')
+        survey_data = get_survey_data(n_participants=n_participants, date=today, exp_num=get_exp_of_day())
+        print('Survey data pulled from Qualtrics\n')
+
+        for part, survey in survey_data.items():
+            pre, post = survey['pre'], survey['post']
+            print(f'Participant {part} pre-survey: {pre.shape[0]} items\n')
+            print(f'Participant {part} post-survey: {post.shape[0]} items\n')
+
+        for part, survey in survey_data.items():
+            survey['pre'].to_csv(data_path / f'{part}_pre.csv', index=False)
+            survey['post'].to_csv(data_path / f'{part}_post.csv', index=False)
+
+        print('Survey data saved to data folder\n')
+        print('##########################\n')
+        print('Data pull complete!\n')
+
         #
         # delete_approved = input('Delete files from SD cards? (y/n): ')
         # if delete_approved.lower() == 'y':
