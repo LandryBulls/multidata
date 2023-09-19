@@ -14,5 +14,4 @@ This repository contains a set of scripts to accomplish the following tasks:
 * Add PyQT interface and more descriptive feedback signals (I e. what stage the script is in)
 * Change naming conventions of concatenated videos to include full experimental info (do this for all saved files)
 * Fashion a means of determining which camera is in which position (e.g., front, back, left, right)
-* Add Qualtrics survey data pull code 
-
+s
