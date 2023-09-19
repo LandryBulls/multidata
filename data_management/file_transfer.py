@@ -192,5 +192,30 @@ def run_transfer():
 
     return data_path
 
+# function for pulling qualtrics data to an experiment that already has AV data
+def pull_qualtrics_to_folder(data_path):
+    # get the number of participants from the number of audio files
+    n_participants = len([file for file in os.listdir(data_path / 'audio') if '.wav' in file])
+    # get the date of the experiment
+    date = os.path.basename(data_path).split('_')[0]
+    # get the experiment number
+    exp_num = os.path.basename(data_path).split('_')[1]
+    # get the survey data
+    survey_data = get_survey_data(n_participants=n_participants, date=date, exp_num=exp_num)
+    # make the survey folder
+    survey_path = data_path / 'survey'
+    os.makedirs(survey_path, exist_ok=True)
+
+    for part, survey in survey_data.items():
+        survey['pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
+        survey['post'].to_csv(survey_path / f'{part}_post.csv', index=False)
+
+    print('Survey data saved to data folder\n')
+    print('##########################\n')
+    print('Data pull complete!\n')
+
+    return data_path
+
+
 
 
