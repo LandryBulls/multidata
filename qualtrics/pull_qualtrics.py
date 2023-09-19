@@ -26,7 +26,7 @@ post_3 = survey_ids[3].split(' ')[1]
 pre_2 = survey_ids[4].split(' ')[1]
 post_2 = survey_ids[5].split(' ')[1]
 
-surveys = [pre_4,post_4,pre_3,post_3,pre_2,post_2]
+surveys = [pre_4, post_4, pre_3, post_3, pre_2, post_2]
 
 letters = ['A', 'B', 'C', 'D']
 
@@ -63,10 +63,10 @@ def get_survey_data(n_participants, date, exp_num):
     pre_data = pre_data[(pre_data['StartDate'].str.contains(date)) & (pre_data['Q13']==exp_num)]
     post_data = post_data[(post_data['StartDate'].str.contains(date)) & (post_data['Q13']==exp_num)]
     
-    letters = letters[:n_participants]
-    participant_data = dict(zip(letters, [None]*n_participants))
+    letters_sub = letters[:n_participants]
+    participant_data = dict(zip(letters_sub, [None]*n_participants))
     
-    for letter in letters:
+    for letter in letters_sub:
         participant_pre_data = pre_data[pre_data['Q7']==letter]
         participant_post_data = post_data[post_data['Q7']==letter]
         participant_data[letter] = {'pre':participant_pre_data, 'post':participant_post_data}

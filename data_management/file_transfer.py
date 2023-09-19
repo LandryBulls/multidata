@@ -104,9 +104,9 @@ def get_exp_of_day():
         exp_num = 0
     else:
         # get the number of the last experiment of the day
-        exp_num = f'{len(existing_data_folders):03d}'
+        exp_num = len(existing_data_folders)
 
-    return f'{len(exp_num):03d}'
+    return '{:03}'.format(exp_num)
 
 exp_num = get_exp_of_day()
 
@@ -160,17 +160,22 @@ def run_transfer():
 
         print('##########################\n')
         print('Pulling survey data from Qualtrics...\n')
-        survey_data = get_survey_data(n_participants=n_participants, date=today, exp_num=get_exp_of_day())
+        survey_data = get_survey_data(n_participants=n_participants, date=today, exp_num=exp_num)
+
         print('Survey data pulled from Qualtrics\n')
 
         for part, survey in survey_data.items():
             pre, post = survey['pre'], survey['post']
-            print(f'Participant {part} pre-survey: {pre.shape[0]} items\n')
-            print(f'Participant {part} post-survey: {post.shape[0]} items\n')
+            print(f'Participant {part} pre-survey: {pre.shape[0]} items')
+            print(f'Participant {part} post-survey: {post.shape[0]} items')
+
+        # make the survey folder
+        survey_path = data_path / 'survey'
+        os.makedirs(survey_path, exist_ok=True)
 
         for part, survey in survey_data.items():
-            survey['pre'].to_csv(data_path / f'{part}_pre.csv', index=False)
-            survey['post'].to_csv(data_path / f'{part}_post.csv', index=False)
+            survey['pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
+            survey['post'].to_csv(survey_path / f'{part}_post.csv', index=False)
 
         print('Survey data saved to data folder\n')
         print('##########################\n')
