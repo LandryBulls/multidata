@@ -92,7 +92,7 @@ def check_dates(card_id):
         if date != today:
             warnings.warn(f'Files on {card} were created on {date} instead of {today} (today)')
         elif date == today:
-            print(f'Files on {card} were created on {date}')
+            print(f'All files on were created today ({date})')
 
 def get_exp_of_day():
     # get all experiments of the day
@@ -106,7 +106,7 @@ def get_exp_of_day():
         # get the number of the last experiment of the day
         exp_num = f'{len(existing_data_folders):03d}'
 
-    return exp_num
+    return f'{len(exp_num):03d}'
 
 exp_num = get_exp_of_day()
 
@@ -150,7 +150,8 @@ def run_transfer():
             for file in card_id[card]['files']:
                 filenum += 1
                 print(f'\n\nTransferring file {filenum} of {total_num_files} files\n')
-                print(f'Destination: {dest_path}\n')
+                print(f'Source: {file}\n')
+                print(f'Destination: {dest_path}/{os.path.basename(file)}\n')
                 transfer_file(file, dest_path)
 
         print('##########################\n')

@@ -2,11 +2,15 @@
 
 from QualtricsAPI.Setup import Credentials
 from QualtricsAPI.Survey import Responses
+import os
 
-with open('../qualtrics_credentials.txt','r') as f:
+path_to_qualtrics_credentials = os.path.abspath(os.path.join(os.path.dirname(__file__), '../qualtrics_credentials.txt'))
+path_to_survey_ids = os.path.abspath(os.path.join(os.path.dirname(__file__), '../survey_ids.txt'))
+
+with open(path_to_qualtrics_credentials,'r') as f:
     credentials = f.read().splitlines()
     
-with open('../survey_ids.txt','r') as f:
+with open(path_to_survey_ids,'r') as f:
     survey_ids = f.read().splitlines()
 
 token = credentials[0].split(' ')[1]
