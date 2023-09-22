@@ -25,6 +25,7 @@ pre_3 = survey_ids[2].split(' ')[1]
 post_3 = survey_ids[3].split(' ')[1]
 pre_2 = survey_ids[4].split(' ')[1]
 post_2 = survey_ids[5].split(' ')[1]
+payment = survey_ids[6].split(' ')[1]
 
 surveys = [pre_4, post_4, pre_3, post_3, pre_2, post_2]
 
@@ -58,10 +59,16 @@ def get_survey_data(n_participants, date, exp_num):
     
     pre_data = Responses().get_survey_responses(survey=pre)
     post_data = Responses().get_survey_responses(survey=post)
+    payment = Responses().get_survey_responses(survey=payment)
     
     # grab rows with the correct date and exp_num
-    pre_data = pre_data[(pre_data['StartDate'].str.contains(date)) & (pre_data['Q13']==exp_num)]
-    post_data = post_data[(post_data['StartDate'].str.contains(date)) & (post_data['Q13']==exp_num)]
+    pre_data = pre_data[(pre_data['StartDate'].str.contains(date)) & (exp_num in pre_data['Q13'])]
+    post_data = post_data[(post_data['StartDate'].str.contains(date)) & (exp_num in post_data['Q13']]
+    payment = payment[(payment['StartDate'].str.contains(date))]
+
+    # get when post data was completed and add five minutes to get the end time
+
+
     
     letters_sub = letters[:n_participants]
     participant_data = dict(zip(letters_sub, [None]*n_participants))
