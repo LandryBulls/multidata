@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-
+import pandas as pd
+from IPython.core.display_functions import display
 from QualtricsAPI.Setup import Credentials
 from QualtricsAPI.Survey import Responses
 import os
@@ -25,9 +26,9 @@ pre_3 = survey_ids[2].split(' ')[1]
 post_3 = survey_ids[3].split(' ')[1]
 pre_2 = survey_ids[4].split(' ')[1]
 post_2 = survey_ids[5].split(' ')[1]
-payment = survey_ids[6].split(' ')[1]
+payment_surv = survey_ids[6].split(' ')[1]
 
-surveys = [pre_4, post_4, pre_3, post_3, pre_2, post_2]
+surveys = [pre_4, post_4, pre_3, post_3, pre_2, post_2, payment_surv]
 
 letters = ['A', 'B', 'C', 'D']
 
@@ -59,17 +60,41 @@ def get_survey_data(n_participants, date, exp_num):
     
     pre_data = Responses().get_survey_responses(survey=pre)
     post_data = Responses().get_survey_responses(survey=post)
-    payment = Responses().get_survey_responses(survey=payment)
+    payment = Responses().get_survey_responses(survey=payment_surv)
     
     # grab rows with the correct date and exp_num
-    pre_data = pre_data[(pre_data['StartDate'].str.contains(date)) & (exp_num in pre_data['Q13'])]
-    post_data = post_data[(post_data['StartDate'].str.contains(date)) & (exp_num in post_data['Q13']]
-    payment = payment[(payment['StartDate'].str.contains(date))]
+    pre_data = pre_data[(pre_data['StartDate'].str.contains(date)) & (pre_data['Q13'].str.contains(exp_num))]
+    post_data = post_data[(post_data['StartDate'].str.contains(date)) & (post_data['Q13'].str.contains(exp_num))]
 
-    # get when post data was completed and add five minutes to get the end time
+    # organize payment info into a dataframe and pull
+    payment_elections = payment[(payment['StartDate'].str.contains(date))]
+    payment_elections = payment_elections[['Q1', 'Q3', 'Q4', 'Q5']]
+    pay_df = pd.DataFrame(columns=['name', 'email', 'netID', 'election'])
 
 
-    
+    print('#############################\n')
+    print('Payment elections:\n')
+    for i in range(payment_elections.shape[0]):
+        to_add = payment_elections.iloc[i].values
+        if to_add[-1]=='1':
+            to_add[-1] = 'T-points'
+        elif to_add[-1]=='2':
+            to_add[-1] = 'cash'
+        pay_df.loc[i] = payment_elections.iloc[i].values
+
+    # just printing it out for now until I can get dropbox integration
+    display(pay_df)
+    print('\n#############################\n')
+
+
+
+
+
+    # get the netIDs of the participants
+
+
+
+
     letters_sub = letters[:n_participants]
     participant_data = dict(zip(letters_sub, [None]*n_participants))
     
@@ -80,4 +105,6 @@ def get_survey_data(n_participants, date, exp_num):
         
     return participant_data
 
-
+def get_payments():
+    payment = Responses().get_survey_responses(survey=payment_surv)
+    return payment

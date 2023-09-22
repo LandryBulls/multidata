@@ -210,6 +210,10 @@ def pull_qualtrics_to_folder(data_path):
     for part, survey in survey_data.items():
         survey['pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
         survey['post'].to_csv(survey_path / f'{part}_post.csv', index=False)
+        print(f'Participant {part} pre-survey: {survey["pre"].shape[0]} items')
+        print(f'Participant {part} post-survey: {survey["post"].shape[0]} items')
+
+
 
     print('Survey data saved to data folder\n')
     print('##########################\n')
