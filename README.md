@@ -14,4 +14,5 @@ This repository contains a set of scripts to accomplish the following tasks:
 * Add PyQT interface and more descriptive feedback signals (I e. what stage the script is in)
 * Change naming conventions of concatenated videos to include full experimental info (do this for all saved files)
 * Write code to determine which camera is in which position (e.g., front, back, left, right)
+* Reorganize everything into the same directory (no need for single directories w single scripts)
 
