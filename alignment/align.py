@@ -17,6 +17,17 @@ import subprocess
 import time
 from glob import glob
 
+"""
+This file contains functions for aligning audio and video files.
+
+It works by extracting the audio from each video file, mixing the audio from all the microphones, and then cross-correlating
+the audio from each camera with the mixed microphone audio. The time shift that maximizes the correlation is then applied
+to the video files.
+
+Once the video files are aligned, they are trimmed to the shortest duration (that is, the duration of the shortest video
+determines the duration of all the videos). The microphone audio is also trimmed to the shortest duration.
+"""
+
 def extract_audio(posix_video_path):
     print("Extracting audio from video files...\n")
     out_audio_path = str(os.path.basename(str(posix_video_path)[:-4]+'.wav'))
@@ -85,6 +96,15 @@ def trim_audio(posix_audio_path, start_time, end_time, output_path):
     subprocess.run(ffmpeg_command, shell=True)
 
 def align_data(data_dir):
+    """
+    Takes a data directory containing video files and microphone audio files. Aligns the video files with the microphone audio.
+    Need to add more descriptive comments for each step.
+    :param data_dir:
+    :type data_dir:
+    :return:
+    :rtype:
+    """
+
     # data dir should already contain derivatives folder with concatenated video files and mixed microphone audio
     data_dir = Path(data_dir)
     derivative_path = data_dir / 'derivatives'

@@ -1,4 +1,26 @@
 #!/usr/bin/env python
+
+"""
+This script contains functions for pulling data from Qualtrics. It is intended to be used in conjunction with the
+data_management/file_transfer.py script.
+
+It assumes that a file called qualtrics_credentials.txt exists in the qualtrics directory. This file should contain
+the following information, in order, on separate lines:
+    1. Qualtrics API token
+    2. Qualtrics data center
+    3. Qualtrics directory ID
+
+It also assumes that a file called survey_ids.txt exists in the qualtrics directory. This file should contain the
+following information, in order, on separate lines:
+    1. Pre-survey ID for 4-person experiment
+    2. Post-survey ID for 4-person experiment
+    3. Pre-survey ID for 3-person experiment
+    4. Post-survey ID for 3-person experiment
+    5. Pre-survey ID for 2-person experiment
+    6. Post-survey ID for 2-person experiment
+    7. Payment election survey ID
+"""
+
 import pandas as pd
 from IPython.core.display_functions import display
 from QualtricsAPI.Setup import Credentials

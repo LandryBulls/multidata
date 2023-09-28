@@ -2,6 +2,10 @@ import os
 from pathlib import Path
 import subprocess
 
+"""
+This file contains functions for concatenating video files and converting 360 footage to equirectangular projection.
+"""
+
 def make_derivative_folder(data_dir):
     data_dir = Path(data_dir)
     derivative_path = data_dir / 'derivatives'
