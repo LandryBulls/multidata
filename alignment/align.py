@@ -219,3 +219,11 @@ def align_data(data_dir):
     print("Trimming audio files...\n")
     for mic in list_of_mic_paths:
         trim_audio(mic, trim_times['audio_trim']['in'], trim_times['audio_trim']['out'], str(derivative_path / f'{os.path.basename(str(mic))[:-4]}_trimmed.wav'))
+
+    # print out all the trim times per file
+    print("Trim times:\n")
+    for file in trim_times.keys():
+        print(f"{file}: {trim_times[file]['in']}s to {trim_times[file]['out']}s")
+
+    # return all the files that were just written
+    return [str(i) for i in derivative_path.iterdir() if Path(i).suffix.lower() in ['.mp4', '.wav']]
