@@ -50,7 +50,7 @@ def mix_audio(list_of_arrays):
     # sum the arrays
     return np.sum(padded_arrays, axis=0)
 
-def get_shift_values(list_of_camera_audio_arrays, microphone_mix, chop_to_shortest=False):
+def get_shift_values(list_of_camera_audio_arrays, microphone_mix):
     """
     Takes a list of numpy arrays representing audio from each camera and a numpy array representing the microphone mix.
     Returns a list of numpy arrays representing the aligned audio from each camera.
@@ -58,16 +58,20 @@ def get_shift_values(list_of_camera_audio_arrays, microphone_mix, chop_to_shorte
     # cross-correlate each audio stream with the mix
     # the output array represents how similar the two signals are at each time step
     all_arrays = list_of_camera_audio_arrays + [microphone_mix]
+
     # find the longest array
     max_pos = np.argmax(np.array([len(arr) for arr in all_arrays]))
     maxlen = len(all_arrays[max_pos])
     del all_arrays
+
     # pad the shorter arrays with zeros    
     list_of_camera_audio_arrays = [np.pad(arr, (0, maxlen-len(arr)), 'constant') for arr in list_of_camera_audio_arrays]
     microphone_mix = np.pad(microphone_mix, (0, maxlen-len(microphone_mix)), 'constant')
+
     # cross-correlate each array with the microphone mix
     print("Cross-correlating audio streams with microphone mix...\n")
     correlations = [correlate(arr, microphone_mix, mode='full') for arr in list_of_camera_audio_arrays]
+
     # find the time shift (in seconds) that maximizes the correlation
     print("Finding time shift that maximizes correlation...\n")
     shifts = [np.argmax(corr) - len(arr) for corr, arr in zip(correlations, list_of_camera_audio_arrays)]
@@ -113,8 +117,9 @@ def align_data(data_dir):
     list_of_video_paths = [i for i in list_of_video_paths if 'concatenated' in i]
     print(f'Found {len(list_of_video_paths)} concatenated video files')
     list_of_mic_paths = [str(i) for i in (data_dir / 'audio').iterdir()]
-    # derivative_path = data_dir / 'derivatives'
-    # os.makedirs(str(derivative_path), exist_ok=True)
+    print(f'Found {len(list_of_mic_paths)} microphone audio files')
+    # sort the mic paths
+    list_of_mic_paths.sort()
 
     # make mix of all mics
     print("Mixing microphone audio...\n")
@@ -180,7 +185,6 @@ def align_data(data_dir):
         
     elif trim_status == 'mixed':
         latest = min(shift_values)
-        earliest = max(shift_values)
         for vid, shift in zip(list_of_video_paths, shift_values):
             if shift == latest:
                 trim_times[vid]['in'] = 0
@@ -207,6 +211,7 @@ def align_data(data_dir):
         
     # trim the video files
     print("Trimming video files...\n")
+    # all the trim times are in seconds
     for vid in list_of_video_paths:
         trim_video(vid, trim_times[vid]['in'], trim_times[vid]['out'], str(derivative_path / f'{os.path.basename(str(vid))[:-4]}_trimmed.mp4'))
         
