@@ -10,3 +10,4 @@ ipython
 matplotlib
 time
 glob
+# voicolate @ git+https://github.com/LandryBulls/voicolate.git
