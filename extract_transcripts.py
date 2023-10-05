@@ -1,4 +1,4 @@
-from voicolate.isolate import isolate
+from voicolate.isolate import isolate_audio
 from voicolate.transcribe import transcribe
 from pathlib import Path
 import joblib
@@ -14,7 +14,7 @@ def extract_transcripts(data_dir):
     # make dir
     processed_path.mkdir(exist_ok=True)
     # isolate
-    isolated_files = isolate(audio_files, save_files=True, output_path=str(processed_path))
+    isolated_files = isolate_audio(audio_files, save_files=True, output_path=str(processed_path))
     isolated_files.sort()
     # transcribe
     transcripts = []
@@ -23,7 +23,7 @@ def extract_transcripts(data_dir):
         transcripts.append(transcript)
     # save transcripts
     for letter, transcript in zip(letter_assignments, transcripts):
-        joblib.dump(transcript, processed_path / f'{letter}_transcript.joblib')
+        joblib.dump(transcript, processed_path / f'{letter}_transcript.pkl')
 
 
 
