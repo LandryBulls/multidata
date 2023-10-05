@@ -279,7 +279,7 @@ def pull_qualtrics_to_folder(data_path):
     # get the experiment number
     exp_num = os.path.basename(data_path).split('_')[1]
     # get the survey data
-    survey_data = get_survey_data(n_participants=n_participants, date=date, exp_num=exp_num)
+    survey_data, privacy_elections = get_survey_data(n_participants=n_participants, date=date, exp_num=exp_num)
     # make the survey folder
     survey_path = data_path / 'survey'
     os.makedirs(survey_path, exist_ok=True)
@@ -289,6 +289,8 @@ def pull_qualtrics_to_folder(data_path):
         survey['post'].to_csv(survey_path / f'{part}_post.csv', index=False)
         print(f'Participant {part} pre-survey: {survey["pre"].shape[0]} items')
         print(f'Participant {part} post-survey: {survey["post"].shape[0]} items')
+
+    privacy_elections.to_csv(survey_path / 'privacy_elections.csv', index=False)
 
 
 

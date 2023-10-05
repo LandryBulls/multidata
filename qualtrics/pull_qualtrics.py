@@ -93,6 +93,28 @@ def get_survey_data(n_participants, date, exp_num):
     payment_elections = payment_elections[['Q1', 'Q3', 'Q4', 'Q5']]
     pay_df = pd.DataFrame(columns=['name', 'email', 'netID', 'election'])
 
+    # get privacy elections
+    privacy_elections = post_data[['Q7', 'Q50', 'Q51', 'Q52']].rename(columns={'Q7':'ID', 'Q50':'beh', 'Q51':'AV_general', 'Q52':'AV_partial'})
+
+    beh_full = 'and share de-identified data'
+    beh_partial = 'but do not share'
+    beh_del = 'Delete'
+    av_full = 'share identifiable data'
+    av_deriv = 'share de-identified derivative data'
+    av_no_share = 'but do not share'
+    av_del = 'Delete'
+
+    privacy_elections['beh'] = privacy_elections['beh'].str.replace(f'^.*{beh_full}.*$', 'full', regex=True)
+    privacy_elections['beh'] = privacy_elections['beh'].str.replace(f'^.*{beh_partial}.*$', 'use_noshare', regex=True)
+    privacy_elections['beh'] = privacy_elections['beh'].str.replace(f'^.*{beh_del}.*$', 'delete', regex=True)
+    privacy_elections['AV_general'] = privacy_elections['AV_general'].str.replace(f'^.*{av_full}.*$', 'full', regex=True)
+    privacy_elections['AV_general'] = privacy_elections['AV_general'].str.replace(f'^.*{av_deriv}.*$', 'share_derivative_only', regex=True)
+    privacy_elections['AV_general'] = privacy_elections['AV_general'].str.replace(f'^.*{av_no_share}.*$', 'use_noshare', regex=True)
+    privacy_elections['AV_general'] = privacy_elections['AV_general'].str.replace(f'^.*{av_del}.*$', 'delete', regex=True)
+
+    print('#############################\n')
+    print('Privacy elections:\n')
+    display(privacy_elections)
 
     print('#############################\n')
     print('Payment elections:\n')
@@ -125,8 +147,10 @@ def get_survey_data(n_participants, date, exp_num):
         participant_post_data = post_data[post_data['Q7']==letter]
         participant_data[letter] = {'pre':participant_pre_data, 'post':participant_post_data}
         
-    return participant_data
+    return participant_data, privacy_elections
 
 def get_payments():
     payment = Responses().get_survey_responses(survey=payment_surv)
     return payment
+
+
