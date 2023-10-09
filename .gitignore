@@ -5,3 +5,4 @@ qualtrics/pull_qualtrics.ipynb
 pull_data.sh
 run_file_transfer.py
 pay.ipynb
+*.ipynb
