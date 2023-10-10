@@ -273,7 +273,12 @@ def run_transfer():
 def pull_qualtrics_to_folder(data_path):
     data_path = Path(data_path)
     # get the number of participants from the number of audio files
-    n_participants = len([file for file in os.listdir(data_path / 'audio') if '.wav' in file.lower()])
+    try:
+        n_participants = len([file for file in os.listdir(data_path / 'audio') if '.wav' in file.lower()])
+    except FileNotFoundError:
+        warnings.warn('No audio files found.')
+        n_participants = int(input('Enter number of participants: '))
+
     # get the date of the experiment
     date = os.path.basename(data_path).split('_')[0]
     # get the experiment number
