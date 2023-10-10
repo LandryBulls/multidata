@@ -237,7 +237,7 @@ def run_transfer():
 
         print('##########################\n')
         print('Pulling survey data from Qualtrics...\n')
-        survey_data = get_survey_data(n_participants=n_participants, date=today, exp_num=exp_num)
+        survey_data, privacy_elections = get_survey_data(n_participants=n_participants, date=today, exp_num=exp_num)
 
         print('Survey data pulled from Qualtrics\n')
 
