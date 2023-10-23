@@ -130,6 +130,7 @@ def get_creation_date(path_to_file):
     return time.strftime('%Y-%m-%d', time.gmtime(os.path.getctime(path_to_file)))
 
 # make sure all files have the same creation date and print the files for each unique date detected
+global dates
 def check_dates(card_id):
     """
     Make sure all files on the SD cards have the same creation date. If not, throw a warning. If they do, print the
@@ -139,7 +140,6 @@ def check_dates(card_id):
     :return:
     :rtype:
     """
-    global dates
     dates = []
     for card in card_id:
         for file in card_id[card]['files']:
