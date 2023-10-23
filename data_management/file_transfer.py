@@ -139,6 +139,7 @@ def check_dates(card_id):
     :return:
     :rtype:
     """
+    global dates
     dates = []
     for card in card_id:
         for file in card_id[card]['files']:
@@ -160,8 +161,21 @@ def get_exp_of_day():
     :rtype:
     """
     # get all experiments of the day
+    record_date = dates[0]
     today = time.strftime('%Y-%m-%d')
-    data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained')
+    if record_date != today:
+        different_record_date_ok = input(f'Files were recorded on {record_date} instead of {today} (today). Continue? (y/n): ')
+        if different_record_date_ok.lower() == 'y':
+            pass
+        else:
+            raise OSError('User aborted transfer')
+    if sys.platform == 'linux':
+        data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained')
+    elif sys.platform == 'darwin':
+        data_path = Path('/Volumes/Scraplab/Bulls_Landry/data_backup')
+        # make sure the data path exists
+        if not os.path.exists(data_path):
+            raise OSError('You need to mount the cluster first.')
     existing_data_folders = [exp for exp in glob(f'{data_path}/{today}*') if os.path.isdir(exp)]
     # get the number of the last experiment of the day
     if len(existing_data_folders) == 0:
