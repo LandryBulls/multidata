@@ -129,6 +129,16 @@ def get_creation_date(path_to_file):
     """
     return time.strftime('%Y-%m-%d', time.gmtime(os.path.getctime(path_to_file)))
 
+def get_creation_time(path_to_file):
+    """
+    Get the creation time of a file.
+    :param path_to_file:
+    :type path_to_file:
+    :return:
+    :rtype:
+    """
+    return time.strftime('%H:%M:%S', time.gmtime(os.path.getctime(path_to_file)))
+
 # make sure all files have the same creation date and print the files for each unique date detected
 global dates
 def check_dates(card_id):
@@ -154,6 +164,9 @@ def check_dates(card_id):
         elif date == today:
             print(f'All files on were created today ({date})')
 
+    return dates
+
+
 def get_exp_of_day():
     """
     Get the number of the experiment of the day. This is the nth experiment of the day. The experiment number is
@@ -161,6 +174,7 @@ def get_exp_of_day():
     :rtype:
     """
     # get all experiments of the day
+    dates = check_dates(get_sd_cards())
     record_date = dates[0]
     today = time.strftime('%Y-%m-%d')
     if record_date != today:
@@ -186,7 +200,7 @@ def get_exp_of_day():
 
     return '{:03}'.format(exp_num)
 
-exp_num = get_exp_of_day()
+#exp_num = get_exp_of_day()
 
 def delete_card(card_path):
     """
@@ -216,6 +230,7 @@ def run_transfer():
     check_dates(card_id)
 
     # make an RA account for this
+    exp_num = get_exp_of_day()
     data_path = Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained') / f'{today}_{exp_num}'
     dialog = 'The following files will be transferred:\n\n'
     for card in card_id:
@@ -318,6 +333,44 @@ def pull_qualtrics_to_folder(data_path):
     print('Data pull complete!\n')
 
     return data_path
+
+# def pull_qualtrics_to_folders(list_of_data_paths):
+#     data_paths = [Path(data_path) for data_path in list_of_data_paths]
+#     # get the number of participants from the number of audio files
+#     try:
+#         n_participants = len([file for file in os.listdir(data_path / 'audio') if '.wav' in file.lower()])
+#     except FileNotFoundError:
+#         warnings.warn('No audio files found.')
+#         n_participants = int(input('Enter number of participants: '))
+
+#     # get the date of the experiment
+#     date = os.path.basename(data_path).split('_')[0]
+#     # get the experiment number
+#     exp_num = os.path.basename(data_path).split('_')[1]
+#     # get the survey data
+#     survey_data, privacy_elections = get_survey_data(n_participants=n_participants, date=date, exp_num=exp_num)
+#     # make the survey folder
+#     survey_path = data_path / 'survey'
+#     os.makedirs(survey_path, exist_ok=True)
+
+#     for part, survey in survey_data.items():
+#         survey['pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
+#         survey['post'].to_csv(survey_path / f'{part}_post.csv', index=False)
+#         print(f'Participant {part} pre-survey: {survey["pre"].shape[0]} items')
+#         print(f'Participant {part} post-survey: {survey["post"].shape[0]} items')
+
+#     privacy_elections.to_csv(survey_path / 'privacy_elections.csv', index=False)
+
+
+
+#     print('Survey data saved to data folder\n')
+#     print('##########################\n')
+#     print('Data pull complete!\n')
+
+#     return data_path
+
+# TODO: Shift these last two qualtrics functions back to the qualtrics script itself. 
+#       Refactor the qualtrics script so that only one api call is made per survey
 
 
 
