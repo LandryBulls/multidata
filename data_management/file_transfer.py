@@ -32,6 +32,10 @@ from tqdm import tqdm
 import warnings
 from qualtrics.pull_qualtrics import get_survey_data
 
+dirpath = '/safestore/users/landry/SCRAP/packages/multidata/data_dir.txt'
+with open(dirpath, 'r') as f:
+    main_data_dir = f.readline().strip()
+
 today = time.strftime('%Y-%m-%d')
 def transfer_file(source, dest_path):
     """
@@ -184,7 +188,7 @@ def get_exp_of_day():
         else:
             raise OSError('User aborted transfer')
     if sys.platform == 'linux':
-        data_path = Path('/safestore/users/landry/SCRAP/data/andromeda_storage/conversations_unconstrained')
+        data_path = Path(main_data_dir)
     elif sys.platform == 'darwin':
         data_path = Path('/Volumes/Scraplab/Bulls_Landry/data_backup')
         # make sure the data path exists
@@ -231,7 +235,7 @@ def run_transfer():
 
     # make an RA account for this
     exp_num = get_exp_of_day()
-    data_path = Path('/safestore/users/landry/SCRAP/data/andromeda_storage/conversations_unconstrained') / f'{today}_{exp_num}'
+    data_path = Path(main_data_dir) / f'{today}_{exp_num}'
     dialog = 'The following files will be transferred:\n\n'
     for card in card_id:
         dialog += f'{card} has {len(card_id[card]["files"])} files:\n'
