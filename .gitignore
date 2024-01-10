@@ -7,3 +7,4 @@ run_file_transfer.py
 pay.ipynb
 *.ipynb
 **__pycache__
+data_dir.txt
