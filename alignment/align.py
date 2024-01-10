@@ -7,7 +7,6 @@ import numpy as np
 from pathlib import Path
 import librosa
 from scipy.signal import correlate, resample
-import librosa
 import os
 from tqdm import tqdm
 from IPython.display import Audio, Video

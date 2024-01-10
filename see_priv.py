@@ -10,7 +10,7 @@ def add_priv(data_dir):
     all_surveys = all_surveys[['Q7', 'Q50', 'Q51', 'Q52']]
     all_surveys.to_csv(data_dir / 'privacy_elections.csv', index=False)
 
-alldirs = [str(i) for i in Path('/safestore/users/landry/SCRAP/data/conversations_unconstrained').iterdir() if Path(i).is_dir()]
+alldirs = [str(i) for i in Path('/safestore/users/landry/SCRAP/data/andromeda_storage/conversations_unconstrained').iterdir() if Path(i).is_dir()]
 
 for dir in alldirs:
     add_priv(dir)
