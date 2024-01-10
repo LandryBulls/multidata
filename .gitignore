@@ -6,5 +6,6 @@ pull_data.sh
 run_file_transfer.py
 pay.ipynb
 *.ipynb
+**.ipynb
 **__pycache__
 data_dir.txt
