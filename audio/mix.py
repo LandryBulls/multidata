@@ -2,9 +2,17 @@ from pydub import AudioSegment
 from pathlib import Path
 import os
 
-def mix_audio_files(audio_directory):
-    audio_path = Path(audio_directory)
-    audio_files = sorted([str(i) for i in audio_path.glob("*.WAV")])
+def mix_audio_files(audio):
+    """
+    Takes either a list of audio files or a directory of audio files and mixes them together.
+    The mixed audio file is saved in a directory called 'mixed' in the same directory as the input audio.
+    """
+
+    if isinstance(audio, str) or isinstance(audio, Path):
+        audio_path = Path(audio)
+        audio_files = sorted([str(i).lower() for i in audio_path.glob("*.wav")])
+    elif isinstance(audio, list):
+        audio_files = sorted(audio)
 
     segments = [AudioSegment.from_file(file) for file in audio_files]
     duration = max([len(segment) for segment in segments])
