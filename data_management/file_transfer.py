@@ -32,7 +32,8 @@ from tqdm import tqdm
 import warnings
 from qualtrics.pull_qualtrics import get_survey_data
 
-dirpath = '/safestore/users/landry/SCRAP/packages/multidata/data_dir.txt'
+dirpath = Path(os.path.dirname(os.path.realpath(__file__))) / 'main_data_dir.txt'
+    
 with open(dirpath, 'r') as f:
     main_data_dir = f.readline().strip()
 
