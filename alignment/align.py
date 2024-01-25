@@ -35,7 +35,7 @@ def extract_audio(posix_video_path):
     loaded = librosa.load(out_audio_path, sr=None)
     # delete the file
     os.remove(out_audio_path)
-    # returns both the audio as a numpy array and the sample rate
+    # returns both the audio as a numpy array and the sample rate (arr, sr)
     return loaded
 
 def mix_audio(list_of_arrays):
