@@ -1,5 +1,6 @@
 """
 Extracts transcripts from audio files in a directory.
+Assumes that video has been concatenated and aligned. 
 """
 
 
