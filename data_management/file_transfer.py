@@ -22,6 +22,7 @@ The the assigment of the monocular cameras to cameras 1 and 2 is arbitrary. The 
 
 
 import os
+import subprocess
 from glob import glob
 from pathlib import Path
 import shutil
@@ -301,6 +302,8 @@ def run_transfer():
         # else:
         #     print('SD card file deletion aborted. Files still on SD cards.')
 
+    
+
     return data_path
 
 # function for pulling qualtrics data to an experiment that already has AV data
@@ -335,7 +338,11 @@ def pull_qualtrics_to_folder(data_path):
 
     print('Survey data saved to data folder\n')
     print('##########################\n')
-    print('Data pull complete!\n')
+    print('Data pull complete! Ok to remove drives now.\n')
+    print("BEGINNING CONCATENATION, ALIGNMENT, AND TRANSCRIPTION\n")
+    print("Note: If there are any remaining files to be processed that are not the result of this transfer, they will also be processed here.")
+    subprocess.run('source activate annotate', shell=True)
+    subprocess.run(f'python {dirpath.parent}/concat_align_isolate_transcribe_remaining.py', shell=True)
 
     return data_path
 

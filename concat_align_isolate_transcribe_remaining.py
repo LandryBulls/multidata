@@ -19,7 +19,8 @@ needs_concat_processing = [f for f in data_dir.iterdir() if f.is_dir() and not a
 # keep only folders that contain an audio directory
 needs_concat_processing = [f for f in needs_concat_processing if any([f.name == 'audio' for f in f.iterdir()])]
 print(f'Running concatenation and alignment on {len(needs_concat_processing)} folders:\n')
-print(needs_concat_processing)
+for i in needs_concat_processing:
+    print(i)
 
 for d, dir in enumerate(needs_concat_processing):
     print(f'PROCESSING {dir} ({d+1}/{len(needs_concat_processing)})')
@@ -27,13 +28,16 @@ for d, dir in enumerate(needs_concat_processing):
 
 # retain only top-level folders within data_dir have not had isolation performed on them
 needs_audio_processing = [f for f in data_dir.iterdir() if f.is_dir() and not any([f.name == '0_isolated.wav' for f in f.rglob('*')])]
+# another check that the folder contains an audio directory
 needs_audio_processing = [f for f in needs_audio_processing if (f / 'audio').is_dir() and len([f for f in (f / 'audio').iterdir() if f.suffix.lower() == '.wav']) > 0]
-# ensure that there is a file called 'cam1_concatenated_trimmed.mp4' in each folder's derivatives directory
+# ensure that there is a file called 'cam1_concatenated_trimmed.mp4' in each folder's derivatives directory (this ensures that everything has been aligned)
 needs_audio_processing = [f for f in needs_audio_processing if (f / 'derivatives' / 'cam1_concatenated_trimmed.mp4').exists()]
 
 print(f'Running audio isolation and transcription on {len(needs_audio_processing)} folders:\n')
-print(needs_audio_processing)
+for i in needs_audio_processing:
+    print(i)
+
 for d, dir in enumerate(needs_audio_processing):
-    print(f'Processing {dir} ({d}/{len(needs_audio_processing)} remaining)')
+    print(f'Processing {dir} ({d}/{len(needs_audio_processing)})')
     extract_transcripts(dir)
 
