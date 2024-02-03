@@ -291,7 +291,14 @@ def run_transfer():
 
         print('Survey data saved to data folder\n')
         print('##########################\n')
-        print('Data pull complete!\n')
+
+        print('Data pull complete! Ok to remove drives now.\n')
+        print("BEGINNING CONCATENATION, ALIGNMENT, AND TRANSCRIPTION\n")
+        print("Note: If there are any remaining files to be processed that are not the result of this transfer, they will also be processed here.")
+        
+        # Here I'm activating the environment to run the script to concatenate, align, and transcribe the remaining files.
+        subprocess.run('source activate annotate', shell=True)
+        subprocess.run(f'python ../{dirpath.parent}/concat_align_isolate_transcribe_remaining.py', shell=True)
 
         #
         # delete_approved = input('Delete files from SD cards? (y/n): ')
@@ -338,11 +345,6 @@ def pull_qualtrics_to_folder(data_path):
 
     print('Survey data saved to data folder\n')
     print('##########################\n')
-    print('Data pull complete! Ok to remove drives now.\n')
-    print("BEGINNING CONCATENATION, ALIGNMENT, AND TRANSCRIPTION\n")
-    print("Note: If there are any remaining files to be processed that are not the result of this transfer, they will also be processed here.")
-    subprocess.run('source activate annotate', shell=True)
-    subprocess.run(f'python {dirpath.parent}/concat_align_isolate_transcribe_remaining.py', shell=True)
 
     return data_path
 
