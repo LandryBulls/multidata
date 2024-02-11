@@ -298,7 +298,7 @@ def run_transfer():
         
         # Here I'm activating the environment to run the script to concatenate, align, and transcribe the remaining files.
         subprocess.run('source activate annotate', shell=True)
-        subprocess.run(f'python ../{dirpath.parent}/concat_align_isolate_transcribe_remaining.py', shell=True)
+        subprocess.run(f'python ..{dirpath.parent}/concat_align_isolate_transcribe_remaining.py', shell=True)
 
         #
         # delete_approved = input('Delete files from SD cards? (y/n): ')
