@@ -108,6 +108,12 @@ def align_data(data_dir):
     :rtype:
     """
 
+    """
+    Data dir should contain the folders titled:
+    - derivatives (containing the concatenated video files)
+    - audio (containing the microphone audio files)
+    """
+
     # data dir should already contain derivatives folder with concatenated video files and mixed microphone audio
     data_dir = Path(data_dir)
     derivative_path = data_dir / 'derivatives'
