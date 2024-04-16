@@ -289,6 +289,10 @@ def run_transfer():
             survey['pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
             survey['post'].to_csv(survey_path / f'{part}_post.csv', index=False)
 
+        # add the NOTE.txt file to session folder
+        with open(data_path / 'NOTE.txt', 'w') as f:
+            f.write('')
+
         print('Survey data saved to data folder\n')
         print('##########################\n')
 
@@ -298,7 +302,8 @@ def run_transfer():
         
         # Here I'm activating the environment to run the script to concatenate, align, and transcribe the remaining files.
         subprocess.run('source activate annotate', shell=True)
-        subprocess.run(f'python ..{dirpath.parent}/concat_align_isolate_transcribe_remaining.py', shell=True)
+        cur_filepath = Path(os.path.dirname(os.path.realpath(__file__)))
+        subprocess.run(f'python {cur_filepath.parent.parent}/concat_align_isolate_transcribe_remaining.py', shell=True)
 
         #
         # delete_approved = input('Delete files from SD cards? (y/n): ')
