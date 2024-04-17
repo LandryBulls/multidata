@@ -246,6 +246,15 @@ def run_transfer():
         dialog += '\n'
     dialog += 'Ready to transfer? (y/n): '
     ok = input(dialog)
+    
+    notes = input('Enter any notes for this session (press enter if none): ')
+    if notes:
+        with open(data_path / 'NOTE.txt', 'w') as f:
+            f.write(notes)
+    else:
+        with open(data_path / 'NOTE.txt', 'w') as f:
+            f.write('')
+
     if ok.lower() == 'y':
         transfer_approved = True
         pass
@@ -289,9 +298,9 @@ def run_transfer():
             survey['pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
             survey['post'].to_csv(survey_path / f'{part}_post.csv', index=False)
 
-        # add the NOTE.txt file to session folder
-        with open(data_path / 'NOTE.txt', 'w') as f:
-            f.write('')
+        # # add the NOTE.txt file to session folder
+        # with open(data_path / 'NOTE.txt', 'w') as f:
+        #     f.write('')
 
         print('Survey data saved to data folder\n')
         print('##########################\n')
