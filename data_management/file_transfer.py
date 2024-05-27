@@ -246,14 +246,6 @@ def run_transfer():
         dialog += '\n'
     dialog += 'Ready to transfer? (y/n): '
     ok = input(dialog)
-    
-    notes = input('Enter any notes for this session (press enter if none): ')
-    if notes:
-        with open(data_path / 'NOTE.txt', 'w') as f:
-            f.write(notes)
-    else:
-        with open(data_path / 'NOTE.txt', 'w') as f:
-            f.write('')
 
     if ok.lower() == 'y':
         transfer_approved = True
@@ -261,8 +253,13 @@ def run_transfer():
     else:
         transfer_approved = False
         raise OSError('User aborted transfer')
+    
     if transfer_approved:
-        os.mkdir(data_path)
+        os.makedirs(data_path, exist_ok=True)
+        notes = input('Enter any notes for this session (press enter if none): ')
+        with open(data_path / 'NOTE.txt', 'w') as f:
+            f.write(notes)
+
         total_num_files = sum([len(card_id[card]['files']) for card in card_id])
         filenum = 0
         for card in card_id:
@@ -306,13 +303,6 @@ def run_transfer():
         print('##########################\n')
 
         print('Data pull complete! Ok to remove drives now.\n')
-        print("BEGINNING CONCATENATION, ALIGNMENT, AND TRANSCRIPTION\n")
-        print("Note: If there are any remaining files to be processed that are not the result of this transfer, they will also be processed here.")
-        
-        # Here I'm activating the environment to run the script to concatenate, align, and transcribe the remaining files.
-        subprocess.run('source activate annotate', shell=True)
-        cur_filepath = Path(os.path.dirname(os.path.realpath(__file__)))
-        subprocess.run(f'python {cur_filepath.parent.parent}/concat_align_isolate_transcribe_remaining.py', shell=True)
 
         #
         # delete_approved = input('Delete files from SD cards? (y/n): ')
@@ -323,7 +313,6 @@ def run_transfer():
         # else:
         #     print('SD card file deletion aborted. Files still on SD cards.')
 
-    
 
     return data_path
 
