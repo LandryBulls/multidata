@@ -89,6 +89,16 @@ def get_privacy_elections(post_data):
 
     return privacy_elections
 
+def format_responses(survey_df, qkey):
+    """
+    Formats the survey responses into a dataframe with the question text and response.
+    :param survey_df: The survey dataframe
+    :type survey_df: pd.DataFrame
+    :param qkey: The question key
+    :type qkey: dict
+    """
+    return pd.DataFrame([{'QID': str(k), 'text': str(v), 'response': survey_df[k].values[0]} for k, v in qkey.items()])
+
 def get_survey_data(n_participants, date, exp_num):
     """
     Grabs the survey data for a given experiment from Qualtrics.
@@ -105,12 +115,18 @@ def get_survey_data(n_participants, date, exp_num):
     if n_participants==4:
         pre = pre_4
         post = post_4
+        pre_qkey = pd.read_csv('pre_4key.csv')['Questions'] # these are the keys for the pre-survey (QIDs are keys and question text is values)
+        post_qkey = pd.read_csv('post_4key.csv')['Questions'] # these are the keys for the post-survey (QIDs are keys and question text is values)
     elif n_participants==3:
         pre = pre_3
         post = post_3
+        pre_qkey = pd.read_csv('pre_3key.csv')['Questions'] # these are the keys for the pre-survey (QIDs are keys and question text is values)
+        post_qkey = pd.read_csv('post_3key.csv')['Questions'] # these are the keys for the post-survey (QIDs are keys and question text is values)
     elif n_participants==2:
         pre = pre_2
         post = post_2
+        pre_qkey = pd.read_csv('pre_2key.csv')['Questions'] # these are the keys for the pre-survey (QIDs are keys and question text is values)
+        post_qkey = pd.read_csv('post_2key.csv')['Questions'] # these are the keys for the post-survey (QIDs are keys and question text is values)
     else:
         print('Invalid number of participants')
         return None
@@ -127,6 +143,7 @@ def get_survey_data(n_participants, date, exp_num):
     payment_elections = payment[(payment['StartDate'].str.contains(date))]
     payment_elections = payment_elections[['Q1', 'Q3', 'Q4', 'Q5']]
     pay_df = pd.DataFrame(columns=['name', 'email', 'netID', 'election'])
+    display(pay_df)
 
     # get privacy elections
     privacy_elections = get_privacy_elections(post_data)
@@ -145,25 +162,26 @@ def get_survey_data(n_participants, date, exp_num):
         pay_df.loc[i] = payment_elections.iloc[i].values
 
     # just printing it out for now until I can get dropbox integration
-    display(pay_df)
     print('\n#############################\n')
 
-
-
-
-
-    # get the netIDs of the participants
-
-
-
-
+    # now adding the data for each participant
     letters_sub = letters[:n_participants]
     participant_data = dict(zip(letters_sub, [None]*n_participants))
     
     for letter in letters_sub:
         participant_pre_data = pre_data[pre_data['Q7']==letter]
         participant_post_data = post_data[post_data['Q7']==letter]
-        participant_data[letter] = {'pre':participant_pre_data, 'post':participant_post_data}
+        
+        # Format the responses using the question keys
+        formatted_pre = format_responses(participant_pre_data, pre_qkey)
+        formatted_post = format_responses(participant_post_data, post_qkey)
+        
+        participant_data[letter] = {
+            'pre': formatted_pre,
+            'post': formatted_post,
+            'raw_pre': participant_pre_data,
+            'raw_post': participant_post_data
+        }
         
     return participant_data, privacy_elections
 

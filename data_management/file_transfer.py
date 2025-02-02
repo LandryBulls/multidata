@@ -105,20 +105,26 @@ def get_sd_cards():
     cam_id = 0
 
     for card in connected_sd_cards:
-        if any(['.360' in file for file in get_all_files(card)]):
-            files = [file for file in get_all_files(card) if '.360' in file]
-            card_id['360cam'] = {'card_path': str(card), 'files': files}
-        elif any(['.mp4' in file.lower() for file in get_all_files(card)]):
-            cam_id+=1
-            files = [file for file in get_all_files(card) if '.mp4' in file.lower()]
+        allfiles = get_all_files(card)
+        if any(['.360' in file for file in allfiles]):
+            files = [file for file in allfiles if '.360' in file]
+            # now add the mp4s also
+            files += [file for file in allfiles if '.mp4' in file.lower()]
+            card_id['cam360'] = {'card_path': str(card), 'files': files}
+        elif any(['.mp4' in file.lower() for file in allfiles]) and not any(['TRACK' in file for file in allfiles]) and not any(['.360' in file for file in allfiles]):
+            if '360' in card_id:
+                cam_id = '360'
+            else:
+                cam_id+=1
+            files = [file for file in allfiles if '.mp4' in file.lower()]
             card_id[f'cam{cam_id}'] = {'card_path': str(card), 'files': files}
-        elif any(['TRACK' in file for file in get_all_files(card)]):
+        elif any(['TRACK' in file for file in allfiles]):
             # TO DO: make sure audio files recorded on same date as video files
-            files = [file for file in get_all_files(str(card)) if 'TRACK' in file]
+            files = [file for file in allfiles if 'TRACK' in file]
             card_id['audio'] = {'card_path': card, 'files': files}
         else:
             print(f'Unknown card: {card} contains the following files:')
-            print(get_all_files(card))
+            print(allfiles)
 
     assert len(card_id) == 4, f'Not all cards are connected\n Connected cards: {card_id.keys()}'
 
@@ -161,17 +167,19 @@ def check_dates(card_id):
         for file in card_id[card]['files']:
             dates.append(get_creation_date(file))
     dates = list(set(dates))
+    dates.sort()
     if len(dates) != 1:
-        warnings.warn(f'Files on {card} were not all created on the same date')
+        warnings.warn(f'Files on {card} were not all created on the same date. Here are the files and their creation dates:')
+        print(f'Files on {card} were created on the following dates:')
+        print(f'{file}: {get_creation_date(file)}')
     else:
-        date = dates[0]
+        date = dates[-1]
         if date != today:
             warnings.warn(f'Files on {card} were created on {date} instead of {today} (today)')
         elif date == today:
             print(f'All files on were created today ({date})')
 
     return dates
-
 
 def get_exp_of_day():
     """
@@ -181,7 +189,12 @@ def get_exp_of_day():
     """
     # get all experiments of the day
     dates = check_dates(get_sd_cards())
-    record_date = dates[0]
+    dates.sort()
+    if len(dates) != 1:
+        print(f"Mixed dates detected: {dates}. Choosing the most recent date ({dates[-1]})")
+
+    global record_date
+    record_date = dates[-1]
     today = time.strftime('%Y-%m-%d')
     if record_date != today:
         different_record_date_ok = input(f'Files were recorded on {record_date} instead of {today} (today). Continue? (y/n): ')
@@ -196,7 +209,7 @@ def get_exp_of_day():
         # make sure the data path exists
         if not os.path.exists(data_path):
             raise OSError('You need to mount the cluster first.')
-    existing_data_folders = [exp for exp in glob(f'{data_path}/{today}*') if os.path.isdir(exp)]
+    existing_data_folders = [exp for exp in glob(f'{data_path}/{record_date}*') if os.path.isdir(exp)]
     # get the number of the last experiment of the day
     if len(existing_data_folders) == 0:
         exp_num = 0
@@ -237,13 +250,19 @@ def run_transfer():
 
     # make an RA account for this
     exp_num = get_exp_of_day()
-    data_path = Path(main_data_dir) / f'{today}_{exp_num}'
+    data_path = Path(main_data_dir) / f'{record_date}_{exp_num}'
     dialog = 'The following files will be transferred:\n\n'
     for card in card_id:
         dialog += f'{card} has {len(card_id[card]["files"])} files:\n'
         for file in card_id[card]['files']:
             dialog += f'\t{file}\n'
         dialog += '\n'
+    print(f"Record date will be listed as {record_date} and experiment number will be listed as {exp_num} ({record_date}_{exp_num})")
+    ok = input("Is this correct? (y/n): ")
+    if ok.lower() == 'n':
+        newdate = input('Enter the correct date and experiment number (YYYY-MM-DD_XXX): ')
+        data_path = Path(main_data_dir) / newdate
+
     dialog += 'Ready to transfer? (y/n): '
     ok = input(dialog)
 
@@ -259,6 +278,35 @@ def run_transfer():
         notes = input('Enter any notes for this session (press enter if none): ')
         with open(data_path / 'NOTE.txt', 'w') as f:
             f.write(notes)
+
+
+        print('##########################\n')
+        print('Pulling survey data from Qualtrics...\n')
+        survey_data, privacy_elections = get_survey_data(n_participants=n_participants, date=record_date, exp_num=exp_num)
+
+        print('Survey data pulled from Qualtrics.\n')
+
+        for part, survey in survey_data.items():
+            pre, post = survey['pre'], survey['post']
+            print(f'Participant {part} pre-survey: {pre.shape[0]} items')
+            print(f'Participant {part} post-survey: {post.shape[0]} items')
+
+        # make the survey folder
+        survey_path = data_path / 'survey'
+        os.makedirs(survey_path, exist_ok=True)
+
+        for part, survey in survey_data.items():
+            survey['raw_pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
+            survey['raw_post'].to_csv(survey_path / f'{part}_post.csv', index=False)
+            survey['pre'].to_csv(survey_path / f'{part}_pre_formatted.csv', index=False)
+            survey['post'].to_csv(survey_path / f'{part}_post_formatted.csv', index=False)
+            print(f'Participant {part} pre-survey: {survey["raw_pre"].shape[0]} items')
+            print(f'Participant {part} post-survey: {survey["raw_post"].shape[0]} items')
+
+        privacy_elections.to_csv(survey_path / 'privacy_elections.csv', index=False)
+
+        print('Survey data saved to data folder.\n')
+        print('##########################\n')
 
         total_num_files = sum([len(card_id[card]['files']) for card in card_id])
         filenum = 0
@@ -276,32 +324,6 @@ def run_transfer():
         print('Transfer complete!\n')
         print(f"Audiovisual data saved to {str(data_path)}\n")
 
-        print('##########################\n')
-        print('Pulling survey data from Qualtrics...\n')
-        survey_data, privacy_elections = get_survey_data(n_participants=n_participants, date=today, exp_num=exp_num)
-
-        print('Survey data pulled from Qualtrics\n')
-
-        for part, survey in survey_data.items():
-            pre, post = survey['pre'], survey['post']
-            print(f'Participant {part} pre-survey: {pre.shape[0]} items')
-            print(f'Participant {part} post-survey: {post.shape[0]} items')
-
-        # make the survey folder
-        survey_path = data_path / 'survey'
-        os.makedirs(survey_path, exist_ok=True)
-
-        for part, survey in survey_data.items():
-            survey['pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
-            survey['post'].to_csv(survey_path / f'{part}_post.csv', index=False)
-
-        # # add the NOTE.txt file to session folder
-        # with open(data_path / 'NOTE.txt', 'w') as f:
-        #     f.write('')
-
-        print('Survey data saved to data folder\n')
-        print('##########################\n')
-
         print('Data pull complete! Ok to remove drives now.\n')
 
         #
@@ -309,10 +331,9 @@ def run_transfer():
         # if delete_approved.lower() == 'y':
         #     for card in card_id:
         #         delete_card(card)
-        #     print('Files deleted from SD cards')
+        #+     print('Files deleted from SD cards')
         # else:
         #     print('SD card file deletion aborted. Files still on SD cards.')
-
 
     return data_path
 
@@ -337,14 +358,14 @@ def pull_qualtrics_to_folder(data_path):
     os.makedirs(survey_path, exist_ok=True)
 
     for part, survey in survey_data.items():
-        survey['pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
-        survey['post'].to_csv(survey_path / f'{part}_post.csv', index=False)
-        print(f'Participant {part} pre-survey: {survey["pre"].shape[0]} items')
-        print(f'Participant {part} post-survey: {survey["post"].shape[0]} items')
+        survey['raw_pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
+        survey['raw_post'].to_csv(survey_path / f'{part}_post.csv', index=False)
+        survey['pre'].to_csv(survey_path / f'{part}_pre_formatted.csv', index=False)
+        survey['post'].to_csv(survey_path / f'{part}_post_formatted.csv', index=False)
+        print(f'Participant {part} pre-survey: {survey["raw_pre"].shape[0]} items')
+        print(f'Participant {part} post-survey: {survey["raw_post"].shape[0]} items')
 
     privacy_elections.to_csv(survey_path / 'privacy_elections.csv', index=False)
-
-
 
     print('Survey data saved to data folder\n')
     print('##########################\n')
