@@ -26,6 +26,7 @@ from IPython.core.display_functions import display
 from QualtricsAPI.Setup import Credentials
 from QualtricsAPI.Survey import Responses
 import os
+import json
 
 path_to_qualtrics_credentials = os.path.abspath(os.path.join(os.path.dirname(__file__), '../qualtrics_credentials.txt'))
 path_to_survey_ids = os.path.abspath(os.path.join(os.path.dirname(__file__), '../survey_ids.txt'))
@@ -54,6 +55,9 @@ surveys = [pre_4, post_4, pre_3, post_3, pre_2, post_2, payment_surv]
 
 letters = ['A', 'B', 'C', 'D']
 
+def load_json(path):
+    with open(path, 'r') as f:
+        return json.load(f)
 
 def get_privacy_elections(post_data):
     """
@@ -92,41 +96,71 @@ def get_privacy_elections(post_data):
 def format_responses(survey_df, qkey):
     """
     Formats the survey responses into a dataframe with the question text and response.
-    :param survey_df: The survey dataframe
+    :param survey_df: The survey dataframe (should just be one row)
     :type survey_df: pd.DataFrame
     :param qkey: The question key
     :type qkey: dict
     """
     return pd.DataFrame([{'QID': str(k), 'text': str(v), 'response': survey_df[k].values[0]} for k, v in qkey.items()])
 
-def get_survey_data(n_participants, date, exp_num):
-    """
-    Grabs the survey data for a given experiment from Qualtrics.
-    :param n_participants: Number of participants in the experiment
-    :type n_participants: int
-    :param date: The date the experiment was run
-    :type date: datetime string formatted as YYYY-MM-DD
-    :param exp_num: The experiment number, determined by n of the day.
-    :type exp_num: 3d int
-    :return: A dictionary containing the survey data for each participant. Survey data is separated into pre and post conversation.
-    :rtype: dict
-    """
+def get_all_responses(phase='pre', n=4):
+    # Get the directory where this script is located
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    if phase=='pre':
+        if n==4:
+            pre = pre_4
+            pre_qkey = load_json(os.path.join(current_dir, 'pre_4key.json'))
+        elif n==3:
+            pre = pre_3
+            pre_qkey = load_json(os.path.join(current_dir, 'pre_3key.json'))
+        elif n==2:
+            pre = pre_2
+            pre_qkey = load_json(os.path.join(current_dir, 'pre_2key.json'))
+        else:
+            print('Invalid number of participants')
+            return None
+        
+        data = Responses().get_survey_responses(survey=pre)
+    elif phase=='post':
+        if n==4:
+            post = post_4
+            post_qkey = load_json(os.path.join(current_dir, 'post_4key.json'))
+        elif n==3:
+            post = post_3
+            post_qkey = load_json(os.path.join(current_dir, 'post_3key.json'))
+        elif n==2:
+            post = post_2
+            post_qkey = load_json(os.path.join(current_dir, 'post_2key.json'))
+        else:
+            print('Invalid number of participants')
+            return None
+        
+        data = Responses().get_survey_responses(survey=post)
+    else:
+        print('Invalid phase')
+        return None
+    
+    return data
 
+def get_survey_data(n_participants, date, exp_num):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
     if n_participants==4:
         pre = pre_4
         post = post_4
-        pre_qkey = pd.read_csv('pre_4key.csv')['Questions'] # these are the keys for the pre-survey (QIDs are keys and question text is values)
-        post_qkey = pd.read_csv('post_4key.csv')['Questions'] # these are the keys for the post-survey (QIDs are keys and question text is values)
+        pre_qkey = load_json(os.path.join(current_dir, 'pre_4key.json'))
+        post_qkey = load_json(os.path.join(current_dir, 'post_4key.json'))
     elif n_participants==3:
         pre = pre_3
         post = post_3
-        pre_qkey = pd.read_csv('pre_3key.csv')['Questions'] # these are the keys for the pre-survey (QIDs are keys and question text is values)
-        post_qkey = pd.read_csv('post_3key.csv')['Questions'] # these are the keys for the post-survey (QIDs are keys and question text is values)
+        pre_qkey = load_json(os.path.join(current_dir, 'pre_3key.json'))
+        post_qkey = load_json(os.path.join(current_dir, 'post_3key.json'))
     elif n_participants==2:
         pre = pre_2
         post = post_2
-        pre_qkey = pd.read_csv('pre_2key.csv')['Questions'] # these are the keys for the pre-survey (QIDs are keys and question text is values)
-        post_qkey = pd.read_csv('post_2key.csv')['Questions'] # these are the keys for the post-survey (QIDs are keys and question text is values)
+        pre_qkey = load_json(os.path.join(current_dir, 'pre_2key.json'))
+        post_qkey = load_json(os.path.join(current_dir, 'post_2key.json'))
     else:
         print('Invalid number of participants')
         return None

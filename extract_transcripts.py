@@ -7,7 +7,7 @@ Assumes that video has been concatenated and aligned.
 from voicolate.isolate import isolate_audio
 from voicolate.transcribe import transcribe
 from pathlib import Path
-import joblib
+import json
 from scipy.io import wavfile
 
 letter_assignments = ['A', 'B', 'C', 'D']
@@ -35,9 +35,11 @@ def extract_transcripts(data_dir):
     for file in isolated_files:
         transcript = transcribe(file)
         transcripts.append(transcript)
-    # save transcripts
+    # save transcripts as JSON instead of pickle
     for letter, transcript in zip(letter_assignments, transcripts):
-        joblib.dump(transcript, processed_path / f'{letter}_transcript.pkl')
+        json_path = processed_path / f'{letter}_transcript.json'
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(transcript, f, ensure_ascii=False, indent=2)
 
 
 

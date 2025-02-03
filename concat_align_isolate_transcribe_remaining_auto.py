@@ -9,7 +9,13 @@ from extract_transcripts import extract_transcripts
 from concatenate_align import process_folder
 from pathlib import Path
 import os
+import json
 from tqdm import tqdm
+
+def save_transcript(transcript_data, output_path):
+    """Save transcript data as JSON instead of PKL"""
+    with open(output_path.with_suffix('.json'), 'w', encoding='utf-8') as f:
+        json.dump(transcript_data, f, ensure_ascii=False, indent=2)
 
 def get_folders_needing_processing(data_dir):
     needs_concat_processing = []
@@ -32,14 +38,10 @@ def get_folders_needing_processing(data_dir):
             needs_audio_processing.append(dir_path)
         
         # Check for audio isolation and transcription
+        # Update to check for .json instead of .pkl
         if not (dir_path / 'processed').exists() and (dir_path / 'audio').exists():
             if not dir_path in needs_audio_processing:
                 needs_audio_processing.append(dir_path)
-
-        if (derivatives_dir / 'cam1_concatenated_trimmed.mp4').exists():
-            if not '0_isolated.wav' in os.listdir(dir_path / 'processed'):
-                if not dir_path in needs_audio_processing:
-                    needs_audio_processing.append(dir_path)
 
     return needs_concat_processing, needs_audio_processing
 
@@ -49,12 +51,6 @@ with open('data_management/main_data_dir.txt', 'r') as f:
     print(f'Using data directory: {data_dir}')
 
 needs_concat_processing, needs_audio_processing = get_folders_needing_processing(data_dir)
-
-print(f'Found {len(needs_concat_processing)} folders needing concatenation and alignment, and {len(needs_audio_processing)} folders needing audio isolation and transcription.')
-continue_processing = input('Continue processing? (y/n): ')
-if continue_processing.lower() != 'y':
-    print('Exiting...')
-    exit()
 
 print(f'Running concatenation and alignment on {len(needs_concat_processing)} folders:')
 for dir_path in needs_concat_processing:

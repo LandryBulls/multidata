@@ -9,3 +9,9 @@ pay.ipynb
 **.ipynb
 **__pycache__
 data_dir.txt
+*.csv
+*.pyc
+.DS_Store
+._.DS_Store
+*.json
+*.log
