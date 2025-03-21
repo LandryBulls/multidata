@@ -5,7 +5,7 @@
 This script will fully process all data from the main data directory, including concatenation, alignment, audio isolation, and transcription.
 """
 
-from extract_transcripts import extract_transcripts
+from isolate_and_transcribe import extract_transcripts
 from concatenate_align import process_folder
 from pathlib import Path
 import os

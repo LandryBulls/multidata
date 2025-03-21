@@ -1,5 +1,30 @@
 #!/usr/bin/env python
 
+"""
+This script processes and aligns 360-degree camera videos with regular camera footage using audio synchronization.
+
+The script performs two main functions:
+1. Concatenates multiple 360-degree video files from a session into a single video file
+2. Aligns the concatenated 360 video with existing camera footage using audio cross-correlation
+
+The alignment process:
+- Extracts audio from both the 360 video and a reference camera video
+- Uses cross-correlation to find the optimal alignment point between the two audio streams
+- Trims the 360 video to match the timing of the reference video
+- Outputs the aligned video as '*_concatenated_trimmed.mp4'
+
+Usage:
+    The script reads the data directory path from 'data_management/main_data_dir.txt'
+    and processes all sessions containing 360-degree camera footage.
+
+Requirements:
+    - ffmpeg: for video concatenation and trimming
+    - librosa: for audio processing
+    - scipy: for cross-correlation calculations
+    - numpy: for numerical operations
+    - tqdm: for progress tracking
+"""
+
 from pathlib import Path
 import subprocess
 import librosa
@@ -82,7 +107,10 @@ def process_360_videos(data_dir, overwrite=False):
                    and any('360' in x.name for x in d.iterdir())
                    and (overwrite or not (d / 'derivatives' / '360cam_concatenated_trimmed.mp4').exists())]
     
-    print(f"Found {len(session_dirs)} sessions to process")
+    print(f"Found {len(session_dirs)} sessions to process.")
+    ok = input("Continue? (y/n)")
+    if ok != 'y':
+        return
     
     for session_dir in tqdm(session_dirs):
         print(f"\nProcessing {session_dir}...")

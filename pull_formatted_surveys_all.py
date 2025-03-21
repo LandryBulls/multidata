@@ -74,7 +74,7 @@ def main():
         for session in tqdm(all_sessions, desc='Processing sessions'):
             try:
                 date, exp_num = session.name.split('_')[0], session.name.split('_')[1]
-                survey_dir = session / 'surveys'
+                survey_dir = session / 'survey'
                 audio_dir = session / 'audio'
 
                 # Create survey directory if it doesn't exist

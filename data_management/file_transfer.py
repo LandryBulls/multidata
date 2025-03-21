@@ -102,7 +102,7 @@ def get_sd_cards():
     card_id = {}
     # card label and files to download
     data_incoming = {''}
-    cam_id = 0
+    mono_cam_count = 0
 
     for card in connected_sd_cards:
         allfiles = get_all_files(card)
@@ -110,14 +110,11 @@ def get_sd_cards():
             files = [file for file in allfiles if '.360' in file]
             # now add the mp4s also
             files += [file for file in allfiles if '.mp4' in file.lower()]
-            card_id['cam360'] = {'card_path': str(card), 'files': files}
+            card_id['360cam'] = {'card_path': str(card), 'files': files}
         elif any(['.mp4' in file.lower() for file in allfiles]) and not any(['TRACK' in file for file in allfiles]) and not any(['.360' in file for file in allfiles]):
-            if '360' in card_id:
-                cam_id = '360'
-            else:
-                cam_id+=1
+            mono_cam_count += 1
             files = [file for file in allfiles if '.mp4' in file.lower()]
-            card_id[f'cam{cam_id}'] = {'card_path': str(card), 'files': files}
+            card_id[f'cam{mono_cam_count}'] = {'card_path': str(card), 'files': files}
         elif any(['TRACK' in file for file in allfiles]):
             # TO DO: make sure audio files recorded on same date as video files
             files = [file for file in allfiles if 'TRACK' in file]
