@@ -15,3 +15,16 @@ data_dir.txt
 ._.DS_Store
 *.json
 *.log
+*.mp4
+*.MP4
+*.wav
+*.WAV
+*.mp3
+*.MP3
+*.360
+*.mov
+*.MOV
+*.avi
+*.AVI
+*.mkv
+*.MKV
