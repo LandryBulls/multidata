@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+
+
+### USE CONDA ENVIRONMENT: annotate ###
+
 """
 This script processes and aligns 360-degree camera videos with regular camera footage using audio synchronization.
 
@@ -107,9 +111,11 @@ def process_360_videos(data_dir, overwrite=False):
                    and any('360' in x.name for x in d.iterdir())
                    and (overwrite or not (d / 'derivatives' / '360cam_concatenated_trimmed.mp4').exists())]
     
-    print(f"Found {len(session_dirs)} sessions to process.")
-    ok = input("Continue? (y/n)")
-    if ok != 'y':
+    print(f"\nFound {len(session_dirs)} sessions to process:")
+    for session in session_dirs:
+        print(f"  - {session.name}")
+    ok = input("\nContinue? (y/n): ")
+    if ok.lower() != 'y':
         return
     
     for session_dir in tqdm(session_dirs):

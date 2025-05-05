@@ -27,6 +27,7 @@ def run_isolation(session_dir):
     audio_files = glob.glob(str(derivative_path / 'TRACK0*_trimmed.wav'))
     audio_files.sort()
     # checking if audio files follow the naming convention and order of : TRACK01.WAV, TRACK02.WAV, etc.
+    print(f"Found audio files: {[Path(f).stem for f in audio_files]}")
     for i, file in enumerate(audio_files):
         if Path(file).stem != f'TRACK0{i+1}_trimmed':
             logging.error(f'Audio files do not follow the naming convention and order of : TRACK01_trimmed.WAV, TRACK02_trimmed.WAV, etc. for {session_dir}')
@@ -41,7 +42,19 @@ def run_isolation(session_dir):
 def main():
     data_dir = Path('/safestore/users/landry/SCRAP/data/andromeda_storage/conversations_unconstrained')
     allsessions = [str(i) for i in data_dir.iterdir() if i.is_dir()]
-    for session in tqdm(allsessions[40:]):
+    
+    # Filter sessions that don't have isolated files
+    sessions_to_process = []
+    for session in allsessions:
+        session_path = Path(session)
+        processed_path = session_path / 'processed'
+        if not processed_path.exists() or not any('isolated_v2.wav' in str(f) for f in processed_path.glob('*')):
+            sessions_to_process.append(session)
+
+    ok = input(f'Processing {len(sessions_to_process)} sessions. Continue? (y/n)')
+    if ok.lower() != 'y':
+        return
+    for session in tqdm(sessions_to_process):
         logging.info(f'Processing {session}')
         try:
             run_isolation(session)

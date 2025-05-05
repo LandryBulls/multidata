@@ -279,30 +279,37 @@ def run_transfer():
 
         print('##########################\n')
         print('Pulling survey data from Qualtrics...\n')
-        survey_data, privacy_elections = get_survey_data(n_participants=n_participants, date=record_date, exp_num=exp_num)
+        
+        try:
+            survey_data, privacy_elections = get_survey_data(n_participants=n_participants, date=record_date, exp_num=exp_num)
+            print('Survey data pulled from Qualtrics.\n')
 
-        print('Survey data pulled from Qualtrics.\n')
+            for part, survey in survey_data.items():
+                pre, post = survey['pre'], survey['post']
+                print(f'Participant {part} pre-survey: {pre.shape[0]} items')
+                print(f'Participant {part} post-survey: {post.shape[0]} items')
 
-        for part, survey in survey_data.items():
-            pre, post = survey['pre'], survey['post']
-            print(f'Participant {part} pre-survey: {pre.shape[0]} items')
-            print(f'Participant {part} post-survey: {post.shape[0]} items')
+            # make the survey folder
+            survey_path = data_path / 'survey'
+            os.makedirs(survey_path, exist_ok=True)
 
-        # make the survey folder
-        survey_path = data_path / 'survey'
-        os.makedirs(survey_path, exist_ok=True)
+            for part, survey in survey_data.items():
+                survey['raw_pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
+                survey['raw_post'].to_csv(survey_path / f'{part}_post.csv', index=False)
+                survey['pre'].to_csv(survey_path / f'{part}_pre_formatted.csv', index=False)
+                survey['post'].to_csv(survey_path / f'{part}_post_formatted.csv', index=False)
+                print(f'Participant {part} pre-survey: {survey["raw_pre"].shape[0]} items')
+                print(f'Participant {part} post-survey: {survey["raw_post"].shape[0]} items')
 
-        for part, survey in survey_data.items():
-            survey['raw_pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
-            survey['raw_post'].to_csv(survey_path / f'{part}_post.csv', index=False)
-            survey['pre'].to_csv(survey_path / f'{part}_pre_formatted.csv', index=False)
-            survey['post'].to_csv(survey_path / f'{part}_post_formatted.csv', index=False)
-            print(f'Participant {part} pre-survey: {survey["raw_pre"].shape[0]} items')
-            print(f'Participant {part} post-survey: {survey["raw_post"].shape[0]} items')
+            privacy_elections.to_csv(survey_path / 'privacy_elections.csv', index=False)
+            print('Survey data saved to data folder.\n')
+        except Exception as e:
+            print(f'Error occurred while pulling survey data: {str(e)}')
+            print('Continuing with file transfer without survey data...\n')
+            with open(data_path / 'SURVEY_ERROR.txt', 'w') as f:
+                f.write(f'Error occurred while pulling survey data: {str(e)}\n')
+                f.write(f'Survey data will need to be pulled separately using pull_qualtrics_to_folder()')
 
-        privacy_elections.to_csv(survey_path / 'privacy_elections.csv', index=False)
-
-        print('Survey data saved to data folder.\n')
         print('##########################\n')
 
         total_num_files = sum([len(card_id[card]['files']) for card in card_id])
