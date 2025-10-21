@@ -38,7 +38,6 @@ dirpath = Path(os.path.dirname(os.path.realpath(__file__))) / 'main_data_dir.txt
 with open(dirpath, 'r') as f:
     main_data_dir = f.readline().strip()
 
-today = time.strftime('%Y-%m-%d')
 def transfer_file(source, dest_path):
     """
     Transfer a file from a source to a destination path.
@@ -127,96 +126,46 @@ def get_sd_cards():
 
     return card_id
 
-# func for getting the creation date of a file
-def get_creation_date(path_to_file):
+def get_date_exp_from_user():
     """
-    Get the creation date of a file.
-    :param path_to_file:
-    :type path_to_file:
-    :return:
-    :rtype:
+    Prompt the user to manually enter the date and experiment number for this recording session.
+    :return: date_exp string in format YYYY-MM-DD_XXX
+    :rtype: str
     """
-    return time.strftime('%Y-%m-%d', time.gmtime(os.path.getctime(path_to_file)))
-
-def get_creation_time(path_to_file):
-    """
-    Get the creation time of a file.
-    :param path_to_file:
-    :type path_to_file:
-    :return:
-    :rtype:
-    """
-    return time.strftime('%H:%M:%S', time.gmtime(os.path.getctime(path_to_file)))
-
-# make sure all files have the same creation date and print the files for each unique date detected
-global dates
-def check_dates(card_id):
-    """
-    Make sure all files on the SD cards have the same creation date. If not, throw a warning. If they do, print the
-    creation date.
-    :param card_id:
-    :type card_id:
-    :return:
-    :rtype:
-    """
-    dates = []
-    for card in card_id:
-        for file in card_id[card]['files']:
-            dates.append(get_creation_date(file))
-    dates = list(set(dates))
-    dates.sort()
-    if len(dates) != 1:
-        warnings.warn(f'Files on {card} were not all created on the same date. Here are the files and their creation dates:')
-        print(f'Files on {card} were created on the following dates:')
-        print(f'{file}: {get_creation_date(file)}')
-    else:
-        date = dates[-1]
-        if date != today:
-            warnings.warn(f'Files on {card} were created on {date} instead of {today} (today)')
-        elif date == today:
-            print(f'All files on were created today ({date})')
-
-    return dates
-
-def get_exp_of_day():
-    """
-    Get the number of the experiment of the day. This is the nth experiment of the day. The experiment number is
-    :return:
-    :rtype:
-    """
-    # get all experiments of the day
-    dates = check_dates(get_sd_cards())
-    dates.sort()
-    if len(dates) != 1:
-        print(f"Mixed dates detected: {dates}. Choosing the most recent date ({dates[-1]})")
-
-    global record_date
-    record_date = dates[-1]
-    today = time.strftime('%Y-%m-%d')
-    if record_date != today:
-        different_record_date_ok = input(f'Files were recorded on {record_date} instead of {today} (today). Continue? (y/n): ')
-        if different_record_date_ok.lower() == 'y':
-            pass
+    print('\nPlease enter the date and experiment number for this recording session.')
+    print('Format: YYYY-MM-DD_XXX (e.g., 2024-10-21_001)')
+    
+    while True:
+        date_exp = input('Enter date and experiment number: ').strip()
+        
+        # Basic validation: check format
+        if '_' not in date_exp:
+            print('Invalid format. Please use YYYY-MM-DD_XXX format (e.g., 2024-10-21_001)')
+            continue
+        
+        parts = date_exp.split('_')
+        if len(parts) != 2:
+            print('Invalid format. Please use YYYY-MM-DD_XXX format (e.g., 2024-10-21_001)')
+            continue
+        
+        date_part, exp_part = parts
+        
+        # Check date format (basic check)
+        if len(date_part) != 10 or date_part.count('-') != 2:
+            print('Invalid date format. Please use YYYY-MM-DD (e.g., 2024-10-21)')
+            continue
+        
+        # Check experiment number format (should be 3 digits)
+        if len(exp_part) != 3 or not exp_part.isdigit():
+            print('Invalid experiment number. Please use 3 digits (e.g., 001, 002, etc.)')
+            continue
+        
+        # If validation passes, confirm with user
+        confirm = input(f'You entered: {date_exp}. Is this correct? (y/n): ')
+        if confirm.lower() == 'y':
+            return date_exp
         else:
-            raise OSError('User aborted transfer')
-    if sys.platform == 'linux':
-        data_path = Path(main_data_dir)
-    elif sys.platform == 'darwin':
-        data_path = Path('/Volumes/Scraplab/Bulls_Landry/data_backup')
-        # make sure the data path exists
-        if not os.path.exists(data_path):
-            raise OSError('You need to mount the cluster first.')
-    existing_data_folders = [exp for exp in glob(f'{data_path}/{record_date}*') if os.path.isdir(exp)]
-    # get the number of the last experiment of the day
-    if len(existing_data_folders) == 0:
-        exp_num = 0
-    else:
-        # get the number of the last experiment of the day
-        exp_num = len(existing_data_folders)
-
-    return '{:03}'.format(exp_num)
-
-#exp_num = get_exp_of_day()
+            print('Let\'s try again...')
 
 def delete_card(card_path):
     """
@@ -242,24 +191,17 @@ def run_transfer():
 
     print(f'Found {n_participants} participants')
 
-    # make sure all files have the same creation date
-    check_dates(card_id)
-
-    # make an RA account for this
-    exp_num = get_exp_of_day()
-    data_path = Path(main_data_dir) / f'{record_date}_{exp_num}'
+    # Get date and experiment number from user
+    date_exp = get_date_exp_from_user()
+    data_path = Path(main_data_dir) / date_exp
+    
     dialog = 'The following files will be transferred:\n\n'
     for card in card_id:
         dialog += f'{card} has {len(card_id[card]["files"])} files:\n'
         for file in card_id[card]['files']:
             dialog += f'\t{file}\n'
         dialog += '\n'
-    print(f"Record date will be listed as {record_date} and experiment number will be listed as {exp_num} ({record_date}_{exp_num})")
-    ok = input("Is this correct? (y/n): ")
-    if ok.lower() == 'n':
-        newdate = input('Enter the correct date and experiment number (YYYY-MM-DD_XXX): ')
-        data_path = Path(main_data_dir) / newdate
-
+    
     dialog += 'Ready to transfer? (y/n): '
     ok = input(dialog)
 
@@ -277,40 +219,40 @@ def run_transfer():
             f.write(notes)
 
 
-        print('##########################\n')
-        print('Pulling survey data from Qualtrics...\n')
+        # print('##########################\n')
+        # print('Pulling survey data from Qualtrics...\n')
         
-        try:
-            survey_data, privacy_elections = get_survey_data(n_participants=n_participants, date=record_date, exp_num=exp_num)
-            print('Survey data pulled from Qualtrics.\n')
+        # try:
+        #     survey_data, privacy_elections = get_survey_data(n_participants=n_participants, date=record_date, exp_num=exp_num)
+        #     print('Survey data pulled from Qualtrics.\n')
 
-            for part, survey in survey_data.items():
-                pre, post = survey['pre'], survey['post']
-                print(f'Participant {part} pre-survey: {pre.shape[0]} items')
-                print(f'Participant {part} post-survey: {post.shape[0]} items')
+        #     for part, survey in survey_data.items():
+        #         pre, post = survey['pre'], survey['post']
+        #         print(f'Participant {part} pre-survey: {pre.shape[0]} items')
+        #         print(f'Participant {part} post-survey: {post.shape[0]} items')
 
-            # make the survey folder
-            survey_path = data_path / 'survey'
-            os.makedirs(survey_path, exist_ok=True)
+        #     # make the survey folder
+        #     survey_path = data_path / 'survey'
+        #     os.makedirs(survey_path, exist_ok=True)
 
-            for part, survey in survey_data.items():
-                survey['raw_pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
-                survey['raw_post'].to_csv(survey_path / f'{part}_post.csv', index=False)
-                survey['pre'].to_csv(survey_path / f'{part}_pre_formatted.csv', index=False)
-                survey['post'].to_csv(survey_path / f'{part}_post_formatted.csv', index=False)
-                print(f'Participant {part} pre-survey: {survey["raw_pre"].shape[0]} items')
-                print(f'Participant {part} post-survey: {survey["raw_post"].shape[0]} items')
+        #     for part, survey in survey_data.items():
+        #         survey['raw_pre'].to_csv(survey_path / f'{part}_pre.csv', index=False)
+        #         survey['raw_post'].to_csv(survey_path / f'{part}_post.csv', index=False)
+        #         survey['pre'].to_csv(survey_path / f'{part}_pre_formatted.csv', index=False)
+        #         survey['post'].to_csv(survey_path / f'{part}_post_formatted.csv', index=False)
+        #         print(f'Participant {part} pre-survey: {survey["raw_pre"].shape[0]} items')
+        #         print(f'Participant {part} post-survey: {survey["raw_post"].shape[0]} items')
 
-            privacy_elections.to_csv(survey_path / 'privacy_elections.csv', index=False)
-            print('Survey data saved to data folder.\n')
-        except Exception as e:
-            print(f'Error occurred while pulling survey data: {str(e)}')
-            print('Continuing with file transfer without survey data...\n')
-            with open(data_path / 'SURVEY_ERROR.txt', 'w') as f:
-                f.write(f'Error occurred while pulling survey data: {str(e)}\n')
-                f.write(f'Survey data will need to be pulled separately using pull_qualtrics_to_folder()')
+        #     privacy_elections.to_csv(survey_path / 'privacy_elections.csv', index=False)
+        #     print('Survey data saved to data folder.\n')
+        # except Exception as e:
+        #     print(f'Error occurred while pulling survey data: {str(e)}')
+        #     print('Continuing with file transfer without survey data...\n')
+        #     with open(data_path / 'SURVEY_ERROR.txt', 'w') as f:
+        #         f.write(f'Error occurred while pulling survey data: {str(e)}\n')
+        #         f.write(f'Survey data will need to be pulled separately using pull_qualtrics_to_folder()')
 
-        print('##########################\n')
+        # print('##########################\n')
 
         total_num_files = sum([len(card_id[card]['files']) for card in card_id])
         filenum = 0

@@ -39,7 +39,7 @@ def get_folders_needing_processing(data_dir):
         
         # Check for audio isolation and transcription
         # Update to check for .json instead of .pkl
-        if not (dir_path / 'processed').exists() and (dir_path / 'audio').exists():
+        if (len(list(dir_path / 'processed' / '*_isolated.wav')) == 0) and (dir_path / 'audio').exists():
             if not dir_path in needs_audio_processing:
                 needs_audio_processing.append(dir_path)
 
