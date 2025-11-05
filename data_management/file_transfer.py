@@ -258,7 +258,7 @@ def run_transfer():
         filenum = 0
         for card in card_id:
             dest_path = data_path / card
-            os.mkdir(dest_path)
+            os.makedirs(dest_path)
             for file in card_id[card]['files']:
                 filenum += 1
                 print(f'\n\nTransferring file {filenum} of {total_num_files} files\n')
