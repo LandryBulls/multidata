@@ -34,10 +34,20 @@ def concatenate(cam_directory, dest_directory):
 
     # just put the .mp4's in the same directory, then put the trimmed files in derivatives later
     filename = f'{cam_identity}_concatenated.mp4'
-    # check if filename exists and also if it is greater than 1000 bytes
-    if (dest_directory / filename).exists() and (dest_directory / filename).stat().st_size > 1000:
-        print(f"{filename} already exists in {dest_directory}. Skipping concatenation.")
-        return filename
+    filepath = dest_directory / filename
+    # check if filename exists, is non-trivial size, and is a valid video (moov atom present)
+    if filepath.exists() and filepath.stat().st_size > 1000:
+        probe = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+             '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', str(filepath)],
+            capture_output=True, text=True,
+        )
+        if probe.returncode == 0 and 'video' in probe.stdout:
+            print(f"{filename} already exists in {dest_directory}. Skipping concatenation.")
+            return filename
+        else:
+            print(f"{filename} exists but is corrupt (ffprobe failed). Re-concatenating...")
+            filepath.unlink()
 
     concat_command = f'ffmpeg -y -f concat -safe 0 -i {str(add_text)} -map 0:v -map 0:a:0 -c copy {dest_directory / filename}'
 
@@ -50,9 +60,8 @@ def concatenate(cam_directory, dest_directory):
 def apply_concatenation(data_dir):
     data_dir = Path(data_dir)
     derivative_path = make_derivative_folder(data_dir)
-    # get all camera directories
-    cam_directories = [i for i in Path(data_dir).iterdir() if 'cam' in str(i) and Path(i).is_dir()]
-    cam_directories += [i for i in Path(data_dir).iterdir() if '360' in str(i) and Path(i).is_dir()]
+    # get all camera directories (use i.name to avoid matching on parent path components)
+    cam_directories = [i for i in Path(data_dir).iterdir() if ('cam' in i.name or '360' in i.name) and i.is_dir()]
     concat_files = []
     for cam in cam_directories:
         concat_file = concatenate(cam, derivative_path)
