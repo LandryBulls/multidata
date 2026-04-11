@@ -85,7 +85,7 @@ def trim_video(posix_video_path, start_time, end_time, output_path):
     """
     stringPath = str(posix_video_path)
     duration = VideoFileClip(stringPath).duration
-    ffmpeg_command = f'ffmpeg -i {stringPath} -ss {start_time} -to {end_time} -c copy {output_path}'
+    ffmpeg_command = f'ffmpeg -y -i {stringPath} -ss {start_time} -to {end_time} -c copy {output_path}'
     subprocess.run(ffmpeg_command, shell=True)
 
 def trim_audio(posix_audio_path, start_time, end_time, output_path):
@@ -95,7 +95,7 @@ def trim_audio(posix_audio_path, start_time, end_time, output_path):
     """
     stringPath = str(posix_audio_path)
     duration = librosa.get_duration(filename=stringPath)
-    ffmpeg_command = f'ffmpeg -i {stringPath} -ss {start_time} -to {end_time} -c copy {output_path}'
+    ffmpeg_command = f'ffmpeg -y -i {stringPath} -ss {start_time} -to {end_time} -c copy {output_path}'
     subprocess.run(ffmpeg_command, shell=True)
 
 def align_data(data_dir):
@@ -118,10 +118,25 @@ def align_data(data_dir):
     data_dir = Path(data_dir)
     derivative_path = data_dir / 'derivatives'
     list_of_video_paths = [str(i) for i in derivative_path.iterdir() if Path(i).suffix.lower() == '.mp4']
-    # just confirm that all the video files are the concatenated ones
-    list_of_video_paths = [i for i in list_of_video_paths if 'concatenated' in i]
+    # just confirm that all the video files are the concatenated ones (exclude already-trimmed files)
+    list_of_video_paths = [i for i in list_of_video_paths if 'concatenated' in i and 'trimmed' not in i]
     print(f'Found {len(list_of_video_paths)} concatenated video files')
-    list_of_mic_paths = [str(i) for i in (data_dir / 'audio').iterdir()]
+
+    # Check if all trimmed outputs already exist — skip alignment if so
+    expected_trimmed_videos = [
+        derivative_path / f'{os.path.basename(v)[:-4]}_trimmed.mp4'
+        for v in list_of_video_paths
+    ]
+    list_of_mic_paths = [str(i) for i in (data_dir / 'audio').iterdir() if not Path(i).name.startswith('.')]
+    expected_trimmed_audio = [
+        derivative_path / f'{os.path.basename(m)[:-4]}_trimmed.wav'
+        for m in list_of_mic_paths
+    ]
+    all_expected = expected_trimmed_videos + expected_trimmed_audio
+    if all_expected and all(p.exists() for p in all_expected):
+        print(f'All {len(all_expected)} trimmed files already exist, skipping alignment.')
+        return [str(p) for p in all_expected]
+
     print(f'Found {len(list_of_mic_paths)} microphone audio files')
     # sort the mic paths
     list_of_mic_paths.sort()
