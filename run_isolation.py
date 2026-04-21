@@ -1,8 +1,7 @@
-from voicolate.isolate import isolate_audio
+from voicolate.isolate import isolate
 from pathlib import Path
 import os
 from tqdm import tqdm
-import librosa
 from scipy.io import wavfile
 import glob
 import logging
@@ -22,7 +21,6 @@ logging.basicConfig(
 
 def run_isolation(session_dir):
     session_dir = Path(session_dir)
-    cache_dir = session_dir / 'processed' / 'wiener_cache'
     derivative_path = session_dir / 'derivatives'
     audio_files = glob.glob(str(derivative_path / 'TRACK0*_trimmed.wav'))
     audio_files.sort()
@@ -33,9 +31,15 @@ def run_isolation(session_dir):
             logging.error(f'Audio files do not follow the naming convention and order of : TRACK01_trimmed.WAV, TRACK02_trimmed.WAV, etc. for {session_dir}')
             raise ValueError(f'Audio files do not follow the naming convention and order of : TRACK01_trimmed.WAV, TRACK02_trimmed.WAV, etc. for {session_dir}')
 
-    audio_filenames = [str(Path(i).stem) for i in audio_files]
-    isolated_files = isolate_audio(audio_files, save_files=False, output_path=str(session_dir / 'processed'), cache_dir=str(cache_dir), overwrite=False)
+    if not audio_files:
+        logging.warning(f'No trimmed audio files found in {derivative_path}, skipping.')
+        return
+
     processed_path = session_dir / 'processed'
+    processed_path.mkdir(parents=True, exist_ok=True)
+
+    audio_filenames = [str(Path(i).stem) for i in audio_files]
+    isolated_files = isolate(audio_files, save_files=False, output_path=str(processed_path))
     for file, arr in zip(audio_filenames, isolated_files):
         wavfile.write(str(processed_path / f'{file}_isolated_v2.wav'), 44100, arr)
 

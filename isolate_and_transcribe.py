@@ -4,7 +4,7 @@ Assumes that video has been concatenated and aligned.
 """
 
 
-from voicolate.isolate import isolate_audio
+from voicolate.isolate import isolate
 from voicolate.transcribe import transcribe
 from pathlib import Path
 import json
@@ -83,7 +83,7 @@ def extract_transcripts(data_dir):
     
     try:
         # isolate
-        isolated_files = isolate_audio(audio_files, save_files=True, output_path=str(processed_path))
+        isolated_files = isolate(audio_files, save_files=True, output_path=str(processed_path))
         isolated_files.sort()
     except Exception as e:
         if "operands could not be broadcast together" in str(e):
@@ -94,7 +94,7 @@ def extract_transcripts(data_dir):
                 import shutil
                 shutil.rmtree(cache_dir)
             # Try again
-            isolated_files = isolate_audio(audio_files, save_files=True, output_path=str(processed_path))
+            isolated_files = isolate(audio_files, save_files=True, output_path=str(processed_path))
             isolated_files.sort()
         else:
             raise e
