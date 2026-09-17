@@ -194,7 +194,11 @@ def run_transfer():
     # Get date and experiment number from user
     date_exp = get_date_exp_from_user()
     data_path = Path(main_data_dir) / date_exp
-    
+
+    # never touch an existing session folder (would overwrite NOTE.txt before failing on the cam dirs)
+    if data_path.exists():
+        raise FileExistsError(f'{data_path} already exists. Use a different experiment number or contact Landry.')
+
     dialog = 'The following files will be transferred:\n\n'
     for card in card_id:
         dialog += f'{card} has {len(card_id[card]["files"])} files:\n'
