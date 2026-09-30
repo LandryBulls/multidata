@@ -52,8 +52,30 @@ common, frame-exact start.
    chapter's measured step before the holes are filled.
 
 4. Verify. Each output is ffprobed (streams start at 0, frame count), and its
-   own audio is re-matched against the trimmed mics: the residual lag must be
-   ~0 across the whole session.
+   own audio is re-matched against the trimmed mics in 30 s windows. Every
+   window is stored in the JSON.
+
+   The windows cannot be held to a fixed maximum. The lavs sit at each
+   speaker's mouth while a camera hears that speaker from 1-5 m away, so each
+   window's lag carries the current speaker's distance at ~2.9 ms/m. On
+   2023-10-24_000 the median lag by dominant speaker spans 4.7 ms (cam1),
+   9.0 ms (cam2) and 3.8 ms (360); on 2024-02-02_000 cam2's windows split
+   into two clusters ~20 ms apart. The largest of ~60 windows then exceeds
+   20 ms with perfect clocks, and the old max-window test failed sound trims.
+   What a bad trim changes is the level, not the scatter, so verification
+   tests level statistics:
+     - |median lag|                          <= VERIFY_MAX_MEDIAN_S
+     - |trend of a fitted line, end to end|  <= VERIFY_MAX_TREND_S
+     - largest jump between 8-min block trimmed means  <= VERIFY_MAX_BLOCK_JUMP_S
+       (an unmodelled chapter step; blocks match the 360's ~482 s chapters)
+     - 90th percentile of |lag|              <= VERIFY_MAX_P90_S (gross errors)
+   on windows with r >= VERIFY_MIN_R. Calibrated on four sessions: passing
+   trims reach 7.5 / 2.8 / 9.4 / 18.4 ms on these; real errors (unmodelled 360
+   steps) reach a -17 ms median, a -20.6 ms trend and 13.3-14.9 ms jumps.
+
+   A trim that fails is KEPT: its outputs stay and the JSON says
+   "verified": false with the reasons in "verify_problems". A failed check
+   used to delete a 30-minute trim that was almost always fine.
 """
 import argparse
 import json
@@ -83,7 +105,13 @@ MAX_RESIDUAL_S = 0.015       # RMS of the fit residual
 MAX_ABS_DRIFT = 2e-4         # 0.72 s/hour; measured values are ~6e-5
 MIN_CHAPTER_WINDOWS = 3      # a chapter gets its own offset only with this many windows
 MAX_CHAPTER_STEP_S = 0.100   # audio step at a join; measured values are 6-17 ms
-VERIFY_MAX_LAG_S = 0.020     # trimmed outputs: |residual lag| everywhere below this
+# trimmed outputs: level statistics of the residual lag (see module docstring, step 4)
+VERIFY_MIN_R = 0.5
+VERIFY_MAX_MEDIAN_S = 0.012     # half a frame (8.3 ms) plus margin
+VERIFY_MAX_TREND_S = 0.008
+VERIFY_MAX_BLOCK_JUMP_S = 0.012
+VERIFY_BLOCK_S = 480.0
+VERIFY_MAX_P90_S = 0.025
 
 CAMERAS = ['cam1', 'cam2', '360cam']
 ENCODER = 'hevc_nvenc'
@@ -475,16 +503,56 @@ def align_data(data_dir, force=False, cameras=CAMERAS):
 
     # --- verify -------------------------------------------------------------
     print('Verifying trimmed outputs...')
+    problems = []
     try:
-        verify(data_dir, videos, mics, n_frames, rate, report)
+        problems = verify(data_dir, videos, mics, n_frames, rate, report)
     finally:
         (deriv / 'trim_alignment.json').write_text(json.dumps(report, indent=2))
     print(f'  wrote {deriv / "trim_alignment.json"}')
+    if problems:
+        # Kept, not deleted: the caller decides (see module docstring, step 4).
+        print('  WARNING: trimmed outputs KEPT but NOT verified: ' + '; '.join(problems))
     return [str(p) for p in outputs] + [str(deriv / 'trim_alignment.json')]
 
 
+def residual_checks(rows):
+    """Level statistics of a trimmed output's residual lag (module docstring, step 4).
+
+    `rows` are (t, lag, r) windows. Returns (stats, problems); stats are in
+    seconds, problems is empty when the output passes.
+    """
+    good = np.array([(t, l) for t, l, r in rows if r >= VERIFY_MIN_R])
+    if len(good) < MIN_WINDOWS:
+        return dict(windows_used=len(good)), [f'only {len(good)} windows with r >= {VERIFY_MIN_R}']
+    t, l = good.T
+    trend = float(np.polyfit(t, l, 1)[0] * (t.max() - t.min()))
+    levels = []
+    for a in np.arange(t.min(), t.max() + 1e-9, VERIFY_BLOCK_S):
+        m = (t >= a) & (t < a + VERIFY_BLOCK_S)
+        if m.sum() >= 5:
+            x = np.sort(l[m])
+            k = int(0.1 * len(x))
+            levels.append(float(x[k:len(x) - k].mean()))      # 10% trimmed mean
+    jump = float(np.max(np.abs(np.diff(levels)))) if len(levels) > 1 else 0.0
+    stats = dict(windows_used=int(len(l)),
+                 residual_lag_median_s=float(np.median(l)),
+                 residual_lag_p90_abs_s=float(np.percentile(np.abs(l), 90)),
+                 residual_lag_max_abs_s=float(np.abs(l).max()),
+                 residual_trend_s=trend,
+                 block_levels_s=levels, block_max_jump_s=jump)
+    problems = []
+    for key, val, lim in [('median', stats['residual_lag_median_s'], VERIFY_MAX_MEDIAN_S),
+                          ('trend', trend, VERIFY_MAX_TREND_S),
+                          ('block jump', jump, VERIFY_MAX_BLOCK_JUMP_S),
+                          ('p90', stats['residual_lag_p90_abs_s'], VERIFY_MAX_P90_S)]:
+        if abs(val) > lim:
+            problems.append(f'{key} {val * 1000:+.1f} ms exceeds {lim * 1000:.0f} ms')
+    return stats, problems
+
+
 def verify(data_dir, videos, mics, n_frames, fps, report):
-    """Re-measure the outputs; raise if any is off."""
+    """Re-measure the outputs. Records every window and the checks in `report`
+    and returns the list of problems (empty = verified); never raises."""
     deriv = Path(data_dir) / 'derivatives'
     trimmed = [decode_mono(deriv / f'{m.stem}_trimmed.wav') for m in mics]
     mic_env = envelope(sum(a / (np.sqrt(np.mean(a ** 2)) + 1e-9) for a in trimmed))
@@ -494,24 +562,29 @@ def verify(data_dir, videos, mics, n_frames, fps, report):
         st = probe(out)
         v, a = st.get('video', {}), st.get('audio', {})
         rows = windowed_lags(envelope(decode_mono(out)), mic_env, 0.0)
-        good = [l for _, l, r in rows if r >= MIN_WINDOW_R]
-        worst = max(abs(l) for l in good) if good else None
+        stats, cam_problems = residual_checks(rows)
         chk = dict(frames=v.get('frames'), video_start_s=v.get('start'), audio_start_s=a.get('start'),
-                   residual_lag_median_s=float(np.median(good)) if good else None,
-                   residual_lag_max_abs_s=worst, windows_used=len(good), windows_total=len(rows))
+                   windows_total=len(rows), **stats, problems=cam_problems,
+                   windows=[dict(t=round(t, 2), lag=round(l, 5), r=round(r, 3)) for t, l, r in rows])
         report['cameras'][cam]['verify'] = chk
-        print(f'  {cam}: {chk["frames"]} frames, video/audio start {v.get("start")}/{a.get("start")} s, '
-              f'residual lag median {chk["residual_lag_median_s"]:+.4f} s, max |{worst:.4f}| s '
-              f'({len(good)}/{len(rows)} windows)' if good else f'  {cam}: no windows locked')
+        if 'residual_lag_median_s' in stats:
+            print(f'  {cam}: {chk["frames"]} frames, video/audio start {v.get("start")}/{a.get("start")} s, '
+                  f'residual lag median {stats["residual_lag_median_s"] * 1000:+.1f} ms, '
+                  f'p90 {stats["residual_lag_p90_abs_s"] * 1000:.1f} ms, '
+                  f'trend {stats["residual_trend_s"] * 1000:+.1f} ms, '
+                  f'block jump {stats["block_max_jump_s"] * 1000:.1f} ms '
+                  f'({stats["windows_used"]}/{len(rows)} windows)'
+                  + ('' if not cam_problems else '  <-- ' + '; '.join(cam_problems)))
+        else:
+            print(f'  {cam}: {cam_problems[0]}')
         if v.get('frames') is not None and v['frames'] != n_frames:
-            problems.append(f'{cam}: {v["frames"]} frames, expected {n_frames}')
+            cam_problems.append(f'{v["frames"]} frames, expected {n_frames}')
         if abs(v.get('start', 1.0)) > 0.5 / fps:
-            problems.append(f'{cam}: video starts at {v.get("start")} s')
-        if worst is None or worst > VERIFY_MAX_LAG_S:
-            problems.append(f'{cam}: residual lag {worst} s exceeds {VERIFY_MAX_LAG_S} s')
+            cam_problems.append(f'video starts at {v.get("start")} s')
+        problems += [f'{cam}: {p}' for p in cam_problems]
     report['verified'] = not problems
-    if problems:
-        raise AlignmentError('trimmed outputs failed verification: ' + '; '.join(problems))
+    report['verify_problems'] = problems
+    return problems
 
 
 if __name__ == '__main__':
@@ -523,3 +596,6 @@ if __name__ == '__main__':
         align_data(args.session_dir, force=args.force)
     except AlignmentError as e:
         sys.exit(f'ALIGNMENT FAILED: {e}')
+    record = json.loads((Path(args.session_dir) / 'derivatives' / 'trim_alignment.json').read_text())
+    if not record.get('verified'):
+        sys.exit('TRIMMED BUT NOT VERIFIED: ' + '; '.join(record.get('verify_problems', [])))
