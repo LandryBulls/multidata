@@ -28,6 +28,29 @@ common, frame-exact start.
    0 landed up to a GOP after the in-point -- 0.37 s on 2024-05-22_000 cam1.
    Mic tracks are cut sample-exactly in numpy.
 
+   Camera audio is always handled in timestamp (PTS) time: GoPro chapter files
+   carry 30-53 ms less audio than video, so a concatenated file has an audio
+   hole at every chapter join while its video runs on. Decoding straight
+   through closes the holes and slides everything after each join ~40 ms early
+   -- on 2024-05-22_000 the 360's lag became a sawtooth and its fitted drift
+   came out -0.06 s/hour instead of +0.2. Filling the holes with silence at
+   their timestamps (`aresample=async=1`) keeps audio on the video's timeline,
+   both when estimating and in the trimmed file's own audio track.
+
+   The timestamps are not the whole story. The 360's recorded holes alternate
+   28.3 / 49.7 ms (they differ by exactly one 1024-sample AAC frame), while the
+   audio content actually resumes ~41-44 ms after each join -- so after filling
+   at timestamps the 360's audio still steps by about -13, +10, -13 ms at
+   successive joins (2023-10-24_000 and 2024-05-22_000 alike). The video
+   timestamps run on continuously. A single line through that staircase comes
+   out ~0.04 s/hour too shallow and leaves up to ±15 ms of residual, and the
+   trimmed file's audio inherits the steps: verify then sees a -17 ms median
+   and 28 ms worst case on 2023-10-24_000, although the video is within a frame.
+   So joins are found from the audio packets (a packet stretched over a hole),
+   the fit gets one offset per chapter and a single drift, chapter 0's offset
+   places the video, and the trimmed file's audio is shifted back by each
+   chapter's measured step before the holes are filled.
+
 4. Verify. Each output is ffprobed (streams start at 0, frame count), and its
    own audio is re-matched against the trimmed mics: the residual lag must be
    ~0 across the whole session.
@@ -58,11 +81,17 @@ MIN_WINDOWS = 8
 MIN_ACCEPTED_FRACTION = 0.5
 MAX_RESIDUAL_S = 0.015       # RMS of the fit residual
 MAX_ABS_DRIFT = 2e-4         # 0.72 s/hour; measured values are ~6e-5
+MIN_CHAPTER_WINDOWS = 3      # a chapter gets its own offset only with this many windows
+MAX_CHAPTER_STEP_S = 0.100   # audio step at a join; measured values are 6-17 ms
 VERIFY_MAX_LAG_S = 0.020     # trimmed outputs: |residual lag| everywhere below this
 
 CAMERAS = ['cam1', 'cam2', '360cam']
 ENCODER = 'hevc_nvenc'
-ENCODE_ARGS = ['-preset', 'p5', '-tune', 'hq', '-rc', 'vbr', '-cq', '18', '-b:v', '0']
+# -bf 0: no B-frames. `-tune hq` turns them on, and OpenCV <= 4.10 (the pyfeat2 and
+# mediapipe_gpu envs) then cannot seek: on 2023-10-24_000 CAP_PROP_POS_FRAMES took ~105 s
+# per seek and landed on the wrong frame, where 4.13 took 1 s and was exact. Without
+# B-frames both are exact and fast, at no measurable size cost (2-min test: 459 MB either way).
+ENCODE_ARGS = ['-preset', 'p5', '-tune', 'hq', '-rc', 'vbr', '-cq', '18', '-b:v', '0', '-bf', '0']
 AUDIO_ARGS = ['-c:a', 'aac', '-b:a', '192k']
 
 
@@ -105,12 +134,41 @@ def probe(path):
     return out
 
 
+#: Fill timestamp gaps with silence (and drop overlaps) so decoded audio sits
+#: on the container's timeline, sample 0 at PTS 0. See module docstring, step 2.
+PTS_AUDIO_FILTER = 'aresample=async=1:min_hard_comp=0.001:first_pts=0'
+
+
 def decode_mono(path, sr=ANALYSIS_SR):
-    """Whole file's first audio stream, mono float32 at `sr`. Sample 0 is the
-    stream's first sample, i.e. PTS = its start_time."""
-    out = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-map', '0:a:0', '-ac', '1',
+    """Whole file's first audio stream, mono float32 at `sr`, in PTS time:
+    sample i is at PTS i / sr, with any gaps in the stream filled by silence."""
+    out = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-map', '0:a:0',
+                          '-af', PTS_AUDIO_FILTER, '-ac', '1',
                           '-ar', str(sr), '-f', 's16le', '-'], capture_output=True, check=True).stdout
     return np.frombuffer(out, '<i2').astype(np.float32) / 32768.0
+
+
+def audio_joins(path):
+    """PTS (s) at which a concatenated file's audio resumes after a chapter join.
+
+    A join shows as an audio packet whose duration, or distance to the next
+    packet, departs from the stream's frame size (the concat stretches the
+    chapter's last packet over the hole). The file's final packet is ignored.
+    """
+    r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries',
+                        'packet=pts_time,duration_time', '-of', 'csv=p=0', str(path)],
+                       capture_output=True, text=True, check=True)
+    rows = []
+    for ln in r.stdout.splitlines():
+        f = ln.strip().split(',')
+        if len(f) >= 2 and 'N/A' not in f[:2]:
+            rows.append((float(f[0]), float(f[1])))
+    if len(rows) < 3:
+        return []
+    p, d = np.array(sorted(rows)).T
+    nominal = np.median(d)
+    odd = (np.abs(d[:-1] - nominal) > 1e-4) | (np.abs(p[1:] - (p[:-1] + d[:-1])) > 1e-4)
+    return [float(x) for x in p[1:][odd]]
 
 
 def envelope(x):
@@ -166,28 +224,60 @@ def windowed_lags(cam_env, mic_env, coarse):
     return rows
 
 
-def fit_line(rows):
-    """Robust lag(t) = offset + drift * t. Returns (offset, drift, rms, used, total)."""
+def fit_line(rows, joins=()):
+    """Robust lag(t) = offset_k + drift * t, one offset per chapter k.
+
+    `joins` are the camera PTS where the audio resumes after a chapter join
+    (see `audio_joins`); windows are assigned to chapters by camera time, and a
+    window that straddles a join is left out. A chapter with fewer than
+    MIN_CHAPTER_WINDOWS windows shares its neighbour's offset (its join is not
+    modelled). With no joins this is the plain line.
+
+    Returns (offset, drift, rms, used, total, steps): `offset` is chapter 0's,
+    i.e. the one that places the video; `steps` is [(join_pts, step_s)], the
+    change in the audio's lag at each modelled join.
+    """
     good = [(t, l) for t, l, r in rows if r >= MIN_WINDOW_R]
     if len(good) < 2:
-        return None, None, None, len(good), len(rows)
+        return None, None, None, len(good), len(rows), []
     t, l = np.array(good).T
+    cam_t = t + l
+    active = sorted(joins)
+    while True:
+        straddle = np.zeros(len(t), bool)
+        for j in active:
+            straddle |= np.abs(cam_t - j) < WINDOW_S / 2
+        seg = np.searchsorted(active, cam_t)
+        counts = np.bincount(seg[~straddle], minlength=len(active) + 1)
+        bad = [k for k in range(len(active))
+               if counts[k] < MIN_CHAPTER_WINDOWS or counts[k + 1] < MIN_CHAPTER_WINDOWS]
+        if not bad:
+            break
+        active.pop(bad[0])
+    t, l, seg = t[~straddle], l[~straddle], seg[~straddle]
+    if len(t) < 2:
+        return None, None, None, len(t), len(rows), []
+    X = np.column_stack([t] + [(seg == k).astype(float) for k in range(len(active) + 1)])
+
+    def solve(m):
+        return np.linalg.lstsq(X[m], l[m], rcond=None)[0]
+
     keep = np.ones(len(t), bool)
     for _ in range(3):
-        drift, offset = np.polyfit(t[keep], l[keep], 1)
-        res = l - (offset + drift * t)
+        res = l - X @ solve(keep)
         mad = np.median(np.abs(res[keep] - np.median(res[keep]))) * 1.4826
         new = np.abs(res) <= max(3 * mad, 0.005)
-        if new.sum() < 2 or np.array_equal(new, keep):
+        if new.sum() < X.shape[1] + 1 or np.array_equal(new, keep):
             break
         keep = new
-    drift, offset = np.polyfit(t[keep], l[keep], 1)
-    rms = float(np.sqrt(np.mean((l[keep] - (offset + drift * t[keep])) ** 2)))
-    return float(offset), float(drift), rms, int(keep.sum()), len(rows)
+    b = solve(keep)
+    rms = float(np.sqrt(np.mean((l[keep] - X[keep] @ b) ** 2)))
+    steps = [(float(j), float(b[k + 2] - b[k + 1])) for k, j in enumerate(active)]
+    return float(b[1]), float(b[0]), rms, int(keep.sum()), len(rows), steps
 
 
 def check_fit(name, fit):
-    offset, drift, rms, used, total = fit
+    offset, drift, rms, used, total, steps = fit
     problems = []
     if offset is None or used < MIN_WINDOWS:
         problems.append(f'only {used} of {total} windows locked (need {MIN_WINDOWS})')
@@ -198,24 +288,39 @@ def check_fit(name, fit):
             problems.append(f'residual {rms * 1000:.1f} ms > {MAX_RESIDUAL_S * 1000:.0f} ms')
         if abs(drift) > MAX_ABS_DRIFT:
             problems.append(f'drift {drift * 3600:+.2f} s/hour is implausible')
+        for j, s in steps:
+            if abs(s) > MAX_CHAPTER_STEP_S:
+                problems.append(f'audio steps {s * 1000:+.0f} ms at the join at {j:.1f} s')
     if problems:
         raise AlignmentError(f'{name}: alignment did not lock -- ' + '; '.join(problems))
 
 
 # ---------------------------------------------------------------------- trims
 
-def trim_video(ffmpeg, src, dst, first_frame, n_frames, fps, v_start):
+def audio_filter(steps=(), ss=0.0):
+    """PTS_AUDIO_FILTER, first moving each chapter's audio back by its measured
+    step (see `fit_line`) so the holes are filled to the right length.
+    `ss` is the input seek: filter time T is source PTS - ss."""
+    if not steps:
+        return PTS_AUDIO_FILTER
+    shift = '+'.join(f'gte(T\\,{j - ss:.6f})*({s:.6f})' for j, s in steps)
+    return f'asetpts=PTS-({shift})/TB,{PTS_AUDIO_FILTER}'
+
+
+def trim_video(ffmpeg, src, dst, first_frame, n_frames, fps, v_start, audio_steps=()):
     """Re-encode frames [first_frame, first_frame + n_frames) of src into dst.
 
     The seek lands 1 ms before the target frame's timestamp; with input-side -ss
     and a re-encode, ffmpeg decodes from the preceding keyframe and discards
     everything earlier, so the first output frame IS `first_frame`.
+    `audio_steps` ([(join_pts, step_s)]) are undone in the audio track.
     """
     ss = v_start + first_frame / fps - 0.001
     tmp = dst.with_name(f'.{dst.stem}.partial-{os.getpid()}.mp4')
     cmd = [ffmpeg, '-v', 'error', '-y', '-ss', f'{ss:.6f}', '-i', str(src),
            '-map', '0:v:0', '-map', '0:a:0', '-frames:v', str(n_frames),
-           '-t', f'{n_frames / fps:.6f}', '-c:v', ENCODER, *ENCODE_ARGS, *AUDIO_ARGS, str(tmp)]
+           '-t', f'{n_frames / fps:.6f}', '-c:v', ENCODER, *ENCODE_ARGS,
+           '-af', audio_filter(audio_steps, ss), *AUDIO_ARGS, str(tmp)]
     try:
         subprocess.run(cmd, check=True)
         os.replace(tmp, dst)
@@ -291,23 +396,28 @@ def align_data(data_dir, force=False, cameras=CAMERAS):
         if 'video' not in streams or 'audio' not in streams:
             raise AlignmentError(f'{cam}: need a video and an audio stream in {path}')
         cam_env = envelope(decode_mono(path))
+        joins = audio_joins(path)
         coarse = coarse_lag(cam_env, mic_env)
         rows = windowed_lags(cam_env, mic_env, coarse)
-        fit = fit_line(rows)
-        offset, drift, rms, used, total = fit
+        fit = fit_line(rows, joins)
+        offset, drift, rms, used, total, steps = fit
         print(f'  {cam}: coarse {coarse:+.3f} s -> '
               + ('no fit' if offset is None else
                  f'offset {offset:+.4f} s, drift {drift * 3600:+.3f} s/hour, '
                  f'residual {rms * 1000:.1f} ms')
-              + f', {used}/{total} windows')
+              + f', {used}/{total} windows'
+              + (f'; audio steps at {len(steps)} chapter joins: '
+                 + ' '.join(f'{s * 1000:+.1f}' for _, s in steps) + ' ms' if steps else ''))
         report['cameras'][cam] = dict(
             source=str(path), coarse_lag_s=coarse, offset_s=offset, drift=drift,
             drift_s_per_hour=None if drift is None else drift * 3600,
             residual_rms_s=rms, windows_used=used, windows_total=total,
+            audio_joins_s=joins,
+            audio_steps=[dict(join_pts_s=j, step_s=s) for j, s in steps],
             windows=[dict(t=round(t, 2), lag=round(l, 5), r=round(r, 3)) for t, l, r in rows])
         check_fit(cam, fit)
-        info[cam] = dict(offset=offset, drift=drift, fps=streams['video']['fps'],
-                         v_start=streams['video']['start'], a_start=streams['audio']['start'],
+        info[cam] = dict(offset=offset, drift=drift, steps=steps, fps=streams['video']['fps'],
+                         v_start=streams['video']['start'],
                          v_end=streams['video']['start'] + streams['video']['duration'])
 
     fps = {cam: c['fps'] for cam, c in info.items()}
@@ -316,12 +426,13 @@ def align_data(data_dir, force=False, cameras=CAMERAS):
     rate = float(np.median(list(fps.values())))
 
     # --- common timeline ----------------------------------------------------
-    # Envelope time 0 is the camera's first audio sample, i.e. PTS a_start, so
-    # the camera PTS of mic instant t is  a_start + offset + (1 + drift) * t.
+    # Envelope time is PTS (decode_mono fills from PTS 0), so the camera PTS
+    # of mic instant t is  offset + (1 + drift) * t, with chapter 0's offset:
+    # the video timeline is continuous across joins, only the audio steps.
     # Mics are stretched by k = 1 + median drift; grid time u = k * t.
     k = 1.0 + float(np.median([c['drift'] for c in info.values()]))
     for c in info.values():
-        c['at0'] = c['a_start'] + c['offset']          # camera PTS at grid u = 0
+        c['at0'] = c['offset']                        # camera PTS at grid u = 0
         c['rate'] = (1.0 + c['drift']) / k            # camera seconds per grid second
     start_u = max(0.0, max(-c['at0'] / c['rate'] for c in info.values()))
 
@@ -352,7 +463,8 @@ def align_data(data_dir, force=False, cameras=CAMERAS):
     print(f'Trimming {len(videos)} videos ({ENCODER}) and {len(mics)} mic tracks...')
     with ThreadPoolExecutor(len(videos)) as pool:
         jobs = [pool.submit(trim_video, ffmpeg, path, deriv / f'{cam}_concatenated_trimmed.mp4',
-                            first[cam], n_frames, info[cam]['fps'], info[cam]['v_start'])
+                            first[cam], n_frames, info[cam]['fps'], info[cam]['v_start'],
+                            info[cam]['steps'])
                 for cam, path in videos.items()]
         for m in mics:
             sr = sf.info(str(m)).samplerate
