@@ -47,9 +47,30 @@ common, frame-exact start.
    trimmed file's audio inherits the steps: verify then sees a -17 ms median
    and 28 ms worst case on 2023-10-24_000, although the video is within a frame.
    So joins are found from the audio packets (a packet stretched over a hole),
-   the fit gets one offset per chapter and a single drift, chapter 0's offset
-   places the video, and the trimmed file's audio is shifted back by each
-   chapter's measured step before the holes are filled.
+   chapter 0's offset places the video, and the trimmed file's audio is
+   shifted back by each chapter's step before the holes are filled.
+
+   The steps are not fitted; they follow from the containers. The camera
+   records audio continuously; what differs is how much of each chapter the
+   concatenated file kept. The MAX writes chapters of 22617 and 22616 AAC
+   frames alternately against 482.482 s of video, and the exports' edit lists
+   cut the last 2 frames, so step = hole - 42.7 ms (the "content resumes
+   ~41 ms after the break" seen earlier is those 2 frames); the exports
+   re-rendered from .360 keep 22616 frames each (7.3 ms holes) and the step
+   still alternates -14.0 / +7.3 ms; the mono cams drop nothing, so their
+   11 ms hole at the third join is the step. `chapter_steps` computes this from
+   `{cam}_concat_history.txt` and the chapter files' indexes (the .360 beside
+   a MAX export; ~1 MB read per file), and `fit_line` then fits offset and
+   drift only. Fitted steps traded off against the drift: across 63 sessions
+   corr(360 drift - mono drift, sum of steps) was -0.93 and the 360's drift
+   scattered 0.018 s/hour around the mono cams' (cam1 vs cam2: 0.008), which
+   failed 12 sessions on verify's trend. One fitted step size per camera
+   (step = hole - R) does not help: R lands near 43 ms but correlates +0.94
+   with the drift error. With the container steps the scatter is 0.006 s/hour.
+   If the chapter files cannot be read, each chapter falls back to a free
+   offset ("step_model": "free"). A chapter table that the audio contradicts
+   by more than MAX_STEP_MODEL_ERROR_S per join (`step_model_error`, a common
+   extra step fitted only as a check) fails `check_fit`.
 
 4. Verify. Each output is ffprobed (streams start at 0, frame count), and its
    own audio is re-matched against the trimmed mics in 30 s windows. Every
@@ -81,6 +102,7 @@ import argparse
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -105,6 +127,7 @@ MAX_RESIDUAL_S = 0.015       # RMS of the fit residual
 MAX_ABS_DRIFT = 2e-4         # 0.72 s/hour; measured values are ~6e-5
 MIN_CHAPTER_WINDOWS = 3      # a chapter gets its own offset only with this many windows
 MAX_CHAPTER_STEP_S = 0.100   # audio step at a join; measured values are 6-17 ms
+MAX_STEP_MODEL_ERROR_S = 0.012   # see step_model_error
 # trimmed outputs: level statistics of the residual lag (see module docstring, step 4)
 VERIFY_MIN_R = 0.5
 VERIFY_MAX_MEDIAN_S = 0.012     # half a frame (8.3 ms) plus margin
@@ -176,13 +199,102 @@ def decode_mono(path, sr=ANALYSIS_SR):
     return np.frombuffer(out, '<i2').astype(np.float32) / 32768.0
 
 
-def audio_joins(path):
-    """PTS (s) at which a concatenated file's audio resumes after a chapter join.
+def _mp4_boxes(buf, off, end):
+    """(type, payload_start, box_end) for each box in buf[off:end]."""
+    while off + 8 <= end:
+        size, typ = struct.unpack('>I4s', buf[off:off + 8])
+        hdr = 8
+        if size == 1:
+            size, hdr = struct.unpack('>Q', buf[off + 8:off + 16])[0], 16
+        elif size == 0:
+            size = end - off
+        if size < hdr:
+            raise ValueError(f'corrupt MP4 box at {off}')
+        yield typ, off + hdr, off + size
+        off += size
 
-    A join shows as an audio packet whose duration, or distance to the next
-    packet, departs from the stream's frame size (the concat stretches the
-    chapter's last packet over the hole). The file's final packet is ignored.
+
+def _mp4_find(buf, off, end, path):
+    """Payload spans of every box at `path` (e.g. [b'mdia', b'mdhd']) under buf[off:end]."""
+    out = []
+    for typ, s, e in _mp4_boxes(buf, off, end):
+        if typ == path[0]:
+            out += [(s, e)] if len(path) == 1 else _mp4_find(buf, s, e, path[1:])
+    return out
+
+
+def mp4_audio_index(path):
+    """First audio track's packet timing, read from the MP4 index (moov) alone.
+
+    Seeks over the top-level boxes and reads only `moov`, so a 23 GB file on
+    the network share costs ~1 MB of I/O instead of a full read. Returns
+    dict(pts, dur: int64 arrays in the track timescale, as ffprobe reports
+    them; timescale; edit_s: duration of the first non-empty edit, or None).
+    Matches `ffprobe -show_entries packet=pts,duration` exactly (checked on
+    2023-10-24_000 and 2024-05-22_000). Raises ValueError if there is no
+    moov or no audio track.
     """
+    with open(path, 'rb') as f:
+        f.seek(0, 2)
+        flen, off, moov = f.tell(), 0, None
+        while off + 8 <= flen:
+            f.seek(off)
+            h = f.read(16)
+            size, typ = struct.unpack('>I4s', h[:8])
+            if size == 1:
+                size = struct.unpack('>Q', h[8:16])[0]
+            elif size == 0:
+                size = flen - off
+            if size < 8:
+                break
+            if typ == b'moov':
+                f.seek(off)
+                moov = f.read(size)
+                break
+            off += size
+    if moov is None or len(moov) < 8:
+        raise ValueError(f'{path}: no moov box')
+    mv = _mp4_find(moov, 8, len(moov), [b'mvhd'])[0][0]
+    movie_ts = struct.unpack('>I', moov[mv + (20 if moov[mv] == 1 else 12):][:4])[0]
+    for ts, te in _mp4_find(moov, 8, len(moov), [b'trak']):
+        hd = _mp4_find(moov, ts, te, [b'mdia', b'hdlr'])
+        if not hd or moov[hd[0][0] + 8:hd[0][0] + 12] != b'soun':
+            continue
+        md = _mp4_find(moov, ts, te, [b'mdia', b'mdhd'])[0][0]
+        timescale = struct.unpack('>I', moov[md + (20 if moov[md] == 1 else 12):][:4])[0]
+        stbl = [b'mdia', b'minf', b'stbl']
+        s = _mp4_find(moov, ts, te, stbl + [b'stts'])[0][0]
+        n = struct.unpack('>I', moov[s + 4:s + 8])[0]
+        e = np.frombuffer(moov, '>u4', 2 * n, s + 8).reshape(n, 2).astype(np.int64)
+        dur = np.repeat(e[:, 1], e[:, 0])
+        pts = np.concatenate([[0], np.cumsum(dur)[:-1]]).astype(np.int64)
+        for s, _ in _mp4_find(moov, ts, te, stbl + [b'ctts'])[:1]:
+            n = struct.unpack('>I', moov[s + 4:s + 8])[0]
+            e = np.frombuffer(moov, '>u4', 2 * n, s + 8).reshape(n, 2)
+            pts = pts + np.repeat(e[:, 1].astype(np.uint32).view(np.int32) if moov[s] == 1
+                                  else e[:, 1], e[:, 0]).astype(np.int64)
+        edit_s = None
+        for s, _ in _mp4_find(moov, ts, te, [b'edts', b'elst'])[:1]:
+            v, p = moov[s], s + 8
+            for _ in range(struct.unpack('>I', moov[s + 4:s + 8])[0]):
+                seg, mt = struct.unpack('>Qq' if v == 1 else '>Ii', moov[p:p + (16 if v == 1 else 8)])
+                p += 20 if v == 1 else 12
+                if mt >= 0:                               # first non-empty edit
+                    pts, edit_s = pts - mt, seg / movie_ts
+                    break
+        return dict(pts=pts, dur=dur, timescale=timescale, edit_s=edit_s)
+    raise ValueError(f'{path}: no audio track')
+
+
+def _audio_packets(path):
+    """(pts_s, dur_s) arrays of the first audio stream, from the index; ffprobe if
+    the index cannot be parsed (not an MP4)."""
+    try:
+        a = mp4_audio_index(path)
+        o = np.argsort(a['pts'], kind='stable')
+        return a['pts'][o] / a['timescale'], a['dur'][o] / a['timescale']
+    except (ValueError, IndexError, struct.error):
+        pass
     r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries',
                         'packet=pts_time,duration_time', '-of', 'csv=p=0', str(path)],
                        capture_output=True, text=True, check=True)
@@ -191,12 +303,128 @@ def audio_joins(path):
         f = ln.strip().split(',')
         if len(f) >= 2 and 'N/A' not in f[:2]:
             rows.append((float(f[0]), float(f[1])))
-    if len(rows) < 3:
+    if not rows:
+        return np.zeros(0), np.zeros(0)
+    return np.array(sorted(rows)).T
+
+
+def audio_joins(path):
+    """[(join_pts_s, hole_s)]: where a concatenated file's audio resumes after a
+    chapter join, and how long the timestamp hole before it is.
+
+    A join shows as an audio packet whose duration, or distance to the next
+    packet, departs from the stream's frame size (the concat stretches the
+    chapter's last packet over the hole). The hole is that excess over one
+    frame. The file's final packet is ignored.
+    """
+    p, d = _audio_packets(path)
+    if len(p) < 3:
         return []
-    p, d = np.array(sorted(rows)).T
     nominal = np.median(d)
     odd = (np.abs(d[:-1] - nominal) > 1e-4) | (np.abs(p[1:] - (p[:-1] + d[:-1])) > 1e-4)
-    return [float(x) for x in p[1:][odd]]
+    hole = p[1:] - p[:-1] - nominal
+    return [(round(float(j), 6), round(float(h), 6)) for j, h in zip(p[1:][odd], hole[odd])]
+
+
+def _chapter_file(listed, session):
+    """A chapter file named in a concat history, or the same name elsewhere in its
+    session's raw directory (sessions and camera folders have been renamed)."""
+    listed = Path(listed)
+    if listed.exists():
+        return listed
+    root = listed.parent.parent.parent / session
+    for pat in (f'{listed.parent.name}/{listed.name}', f'*/{listed.name}'):
+        hits = sorted(root.glob(pat))
+        if len(hits) == 1:
+            return hits[0]
+    return None
+
+
+def concat_chapters(video):
+    """Per chapter of `{cam}_concatenated.mp4`, from `{cam}_concat_history.txt`:
+    dict(file, kept, native_s), where `kept` is how many audio packets the concat
+    took from the chapter (its edit list cuts trailing ones) and `native_s` is
+    how much audio the camera recorded for it (the .360 beside a MAX export,
+    else the chapter file itself). Only the files' indexes are read. None if
+    there is no history or any chapter cannot be read.
+    """
+    video = Path(video)
+    hist = video.with_name(video.name.replace('_concatenated.mp4', '_concat_history.txt'))
+    if not hist.exists():
+        return None
+    session = video.parent.parent.name
+    chapters = []
+    for ln in hist.read_text().splitlines():
+        if not ln.startswith('file'):
+            continue
+        f = _chapter_file(ln[4:].strip().strip("'\""), session)
+        if f is None:
+            return None
+        try:
+            a = mp4_audio_index(f)
+            frame = int(np.median(a['dur']))
+            kept = len(a['pts']) if a['edit_s'] is None else \
+                min(len(a['pts']), int(round(a['edit_s'] * a['timescale'] / frame)))
+            native_s = a['dur'].sum() / a['timescale']
+        except (OSError, ValueError, IndexError, struct.error):
+            a, kept, native_s = None, 0, None            # a chapter without audio
+        native = f.with_suffix('.360')
+        if native.exists():
+            try:
+                b = mp4_audio_index(native)
+                native_s = b['dur'].sum() / b['timescale']
+            except (OSError, ValueError, IndexError, struct.error):
+                pass                                    # truncated copy: keep the export's count
+        if native_s is None:
+            return None
+        chapters.append(dict(file=str(f), kept=kept, native_s=float(native_s)))
+    return chapters or None
+
+
+def chapter_steps(video, joins):
+    """The audio step at each chapter join, from the containers alone.
+
+    The camera records audio continuously across chapters. The concatenated
+    file starts each chapter's audio at a timestamp (after the hole), and its
+    content is the chapter's first `kept` packets, so chapter k's audio sits
+    e_k = PTS(first packet of k) - sum of earlier chapters' native audio
+    away from where it was recorded; the step at the join into k is
+    e_k - e_(k-1). Equivalently step = hole - audio the concat dropped from
+    the chapter before (2 AAC frames, 42.7 ms, for the MAX exports whose edit
+    lists cut them; one frame or none for the re-rendered ones; none for the
+    mono cams).
+
+    Returns [(join_pts_s, hole_s, step_s)] covering every join in `joins` (plus
+    any chapter boundary that steps without a timestamp hole), or None if the
+    chapters cannot be read or do not line up with the file's packets.
+    """
+    chapters = concat_chapters(video)
+    if not chapters:
+        return None
+    p, d = _audio_packets(video)
+    kept = np.array([c['kept'] for c in chapters])
+    if kept.sum() != len(p):
+        return None
+    starts = np.concatenate([[0], np.cumsum(kept)[:-1]])
+    native_before = np.concatenate([[0.0], np.cumsum([c['native_s'] for c in chapters])[:-1]])
+    nominal = float(np.median(d))
+    holes = dict(joins)
+    out, prev_e = [], None
+    for k in range(len(chapters)):
+        if kept[k] == 0:
+            continue
+        e = p[starts[k]] - native_before[k]
+        if prev_e is not None:
+            j = round(float(p[starts[k]]), 6)
+            hole = holes.pop(j, round(float(p[starts[k]] - p[starts[k] - 1] - nominal), 6))
+            if j in dict(joins) or abs(e - prev_e) > 1e-4:
+                out.append((j, hole, float(e - prev_e)))
+        prev_e = e
+    if holes:                     # a join that is not a chapter boundary
+        return None
+    if any(abs(s) > MAX_CHAPTER_STEP_S for _, _, s in out):
+        return None               # not one continuous recording, e.g. a truncated export
+    return out
 
 
 def envelope(x):
@@ -252,14 +480,46 @@ def windowed_lags(cam_env, mic_env, coarse):
     return rows
 
 
-def fit_line(rows, joins=()):
-    """Robust lag(t) = offset_k + drift * t, one offset per chapter k.
+def _robust_lstsq(X, y):
+    """Least squares with the fit's outlier rule: 3 rounds, keep |res| <= max(3 MAD, 5 ms).
+    Returns (coefficients, rms of kept residuals, kept mask)."""
+    def solve(m):
+        return np.linalg.lstsq(X[m], y[m], rcond=None)[0]
+
+    keep = np.ones(len(y), bool)
+    for _ in range(3):
+        res = y - X @ solve(keep)
+        mad = np.median(np.abs(res[keep] - np.median(res[keep]))) * 1.4826
+        new = np.abs(res) <= max(3 * mad, 0.005)
+        if new.sum() < X.shape[1] + 1 or np.array_equal(new, keep):
+            break
+        keep = new
+    b = solve(keep)
+    return b, float(np.sqrt(np.mean((y[keep] - X[keep] @ b) ** 2))), keep
+
+
+def fit_line(rows, joins=(), steps=None):
+    """Robust lag(t) = offset + drift * t + the audio steps at chapter joins.
 
     `joins` are the camera PTS where the audio resumes after a chapter join
     (see `audio_joins`); windows are assigned to chapters by camera time, and a
-    window that straddles a join is left out. A chapter with fewer than
-    MIN_CHAPTER_WINDOWS windows shares its neighbour's offset (its join is not
-    modelled). With no joins this is the plain line.
+    window that straddles a join is left out. With no joins this is the plain
+    line.
+
+    `steps` given (one per join, from `chapter_steps`): the steps are known
+    from the containers, so they are subtracted and only offset and drift are
+    fitted. This is the normal case. Fitting a step per chapter lets the steps
+    trade off against the drift -- across 63 sessions corr(360 drift - mono
+    drift, sum of fitted steps) was -0.93 and the 360's drift scattered 0.018
+    s/hour around the mono cams' -- and fitting one shared step size R per
+    camera (step = hole - R) does not cure it either, because the number of
+    joins passed is a staircase in t and R takes the drift's place. Knowing
+    the steps removes both.
+
+    `steps` None: one offset per chapter k and a single drift (the fallback
+    when the chapter files cannot be read). A chapter with fewer than
+    MIN_CHAPTER_WINDOWS windows shares its neighbour's offset (its join is
+    not modelled).
 
     Returns (offset, drift, rms, used, total, steps): `offset` is chapter 0's,
     i.e. the one that places the video; `steps` is [(join_pts, step_s)], the
@@ -270,6 +530,16 @@ def fit_line(rows, joins=()):
         return None, None, None, len(good), len(rows), []
     t, l = np.array(good).T
     cam_t = t + l
+    if steps is not None and len(joins):
+        js = np.asarray(joins, float)
+        straddle = (np.abs(cam_t[:, None] - js[None, :]) < WINDOW_S / 2).any(1)
+        t, l, cam_t = t[~straddle], l[~straddle], cam_t[~straddle]
+        if len(t) < 2:
+            return None, None, None, len(t), len(rows), []
+        y = l - ((cam_t[:, None] >= js[None, :]) * np.asarray(steps, float)).sum(1)
+        b, rms, keep = _robust_lstsq(np.column_stack([t, np.ones_like(t)]), y)
+        return (float(b[1]), float(b[0]), rms, int(keep.sum()), len(rows),
+                [(float(j), float(s)) for j, s in zip(joins, steps)])
     active = sorted(joins)
     while True:
         straddle = np.zeros(len(t), bool)
@@ -304,9 +574,33 @@ def fit_line(rows, joins=()):
     return float(b[1]), float(b[0]), rms, int(keep.sum()), len(rows), steps
 
 
-def check_fit(name, fit):
+def step_model_error(rows, joins, steps):
+    """How far the audio disagrees with the container-derived steps: the common
+    extra step R per join that a fit with offset, drift and R would add
+    (seconds; 0 = the containers are right). Not used for the trim -- R is
+    confounded with the drift (see `fit_line`) -- only to catch a wrong chapter
+    table. On 59 sessions' 360s it stays within -6.7..+8.2 ms; one chapter
+    miscounted by two AAC frames gives ~16 ms."""
+    good = [(t, l) for t, l, r in rows if r >= MIN_WINDOW_R]
+    if len(good) < 4 or not len(joins):
+        return 0.0
+    t, l = np.array(good).T
+    cam_t = t + l
+    js = np.asarray(joins, float)
+    keep = ~(np.abs(cam_t[:, None] - js[None, :]) < WINDOW_S / 2).any(1)
+    t, l, cam_t = t[keep], l[keep], cam_t[keep]
+    passed = cam_t[:, None] >= js[None, :]
+    y = l - (passed * np.asarray(steps, float)).sum(1)
+    b, _, _ = _robust_lstsq(np.column_stack([t, np.ones_like(t), -passed.sum(1)]), y)
+    return float(b[2])
+
+
+def check_fit(name, fit, step_error=0.0):
     offset, drift, rms, used, total, steps = fit
     problems = []
+    if abs(step_error) > MAX_STEP_MODEL_ERROR_S:
+        problems.append(f'audio disagrees with the chapter steps by {step_error * 1000:+.1f} ms per join '
+                        f'(> {MAX_STEP_MODEL_ERROR_S * 1000:.0f} ms): the chapter table is wrong')
     if offset is None or used < MIN_WINDOWS:
         problems.append(f'only {used} of {total} windows locked (need {MIN_WINDOWS})')
     elif used < MIN_ACCEPTED_FRACTION * total:
@@ -321,6 +615,35 @@ def check_fit(name, fit):
                 problems.append(f'audio steps {s * 1000:+.0f} ms at the join at {j:.1f} s')
     if problems:
         raise AlignmentError(f'{name}: alignment did not lock -- ' + '; '.join(problems))
+
+
+def fit_camera(video, rows, joins=None):
+    """Fit one camera's windows, with its chapter joins (module docstring, step 3).
+
+    Steps come from `chapter_steps` when the chapter files can be read
+    ("step_model": "chapters"); otherwise each chapter gets a free offset as
+    before ("free"). Returns (fit, record, step_error): `record` is the JSON
+    fields describing the joins -- audio_joins_s, and audio_holes with each
+    join's timestamp hole, the audio the concat dropped before it
+    (dropped_s = hole - step), and the step.
+    """
+    joins = audio_joins(video) if joins is None else joins
+    record = dict(audio_joins_s=[j for j, _ in joins], step_model=None, step_model_error_s=None,
+                  audio_holes=[dict(join_pts_s=j, hole_s=h) for j, h in joins])
+    if not joins:
+        return fit_line(rows), record, 0.0
+    table = chapter_steps(video, joins)
+    if table is None:
+        print(f'  WARNING: {Path(video).name}: chapter files unreadable (no concat history, '
+              f'missing chapters, or a truncated export); fitting free chapter steps')
+        record['step_model'] = 'free'
+        return fit_line(rows, [j for j, _ in joins]), record, 0.0
+    js, steps = [j for j, _, _ in table], [s for _, _, s in table]
+    error = step_model_error(rows, js, steps)
+    record.update(step_model='chapters', step_model_error_s=error,
+                  audio_holes=[dict(join_pts_s=j, hole_s=h, dropped_s=round(h - s, 6), step_s=s)
+                               for j, h, s in table])
+    return fit_line(rows, js, steps), record, error
 
 
 # ---------------------------------------------------------------------- trims
@@ -424,26 +747,25 @@ def align_data(data_dir, force=False, cameras=CAMERAS):
         if 'video' not in streams or 'audio' not in streams:
             raise AlignmentError(f'{cam}: need a video and an audio stream in {path}')
         cam_env = envelope(decode_mono(path))
-        joins = audio_joins(path)
         coarse = coarse_lag(cam_env, mic_env)
         rows = windowed_lags(cam_env, mic_env, coarse)
-        fit = fit_line(rows, joins)
+        fit, joins_record, step_error = fit_camera(path, rows)
         offset, drift, rms, used, total, steps = fit
         print(f'  {cam}: coarse {coarse:+.3f} s -> '
               + ('no fit' if offset is None else
                  f'offset {offset:+.4f} s, drift {drift * 3600:+.3f} s/hour, '
                  f'residual {rms * 1000:.1f} ms')
               + f', {used}/{total} windows'
-              + (f'; audio steps at {len(steps)} chapter joins: '
+              + (f'; audio steps ({joins_record["step_model"]}) at {len(steps)} chapter joins: '
                  + ' '.join(f'{s * 1000:+.1f}' for _, s in steps) + ' ms' if steps else ''))
         report['cameras'][cam] = dict(
             source=str(path), coarse_lag_s=coarse, offset_s=offset, drift=drift,
             drift_s_per_hour=None if drift is None else drift * 3600,
             residual_rms_s=rms, windows_used=used, windows_total=total,
-            audio_joins_s=joins,
+            **joins_record,
             audio_steps=[dict(join_pts_s=j, step_s=s) for j, s in steps],
             windows=[dict(t=round(t, 2), lag=round(l, 5), r=round(r, 3)) for t, l, r in rows])
-        check_fit(cam, fit)
+        check_fit(cam, fit, step_error)
         info[cam] = dict(offset=offset, drift=drift, steps=steps, fps=streams['video']['fps'],
                          v_start=streams['video']['start'],
                          v_end=streams['video']['start'] + streams['video']['duration'])
