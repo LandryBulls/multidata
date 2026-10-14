@@ -38,29 +38,55 @@ dirpath = Path(os.path.dirname(os.path.realpath(__file__))) / 'main_data_dir.txt
 with open(dirpath, 'r') as f:
     main_data_dir = f.readline().strip()
 
-def transfer_file(source, dest_path):
+def transfer_file(source, dest_path, chunk_size=1024 * 1024):
     """
     Transfer a file from a source to a destination path.
+
+    The file is written to '<dest>.partial' and only renamed to its final name once the full file has been
+    copied and its size matches the source, so a file with the final name is always complete. On any failure
+    the partial file is removed and an error describing where the read failed is raised.
     :param source: Path to the file to transfer.
-    :type source:
-    :param dest_path:
-    :type dest_path:
-    :return:
-    :rtype:
+    :type source: str
+    :param dest_path: Directory to copy the file into.
+    :type dest_path: str or Path
+    :param chunk_size: Number of bytes to read at a time.
+    :type chunk_size: int
+    :return: Path to the transferred file.
+    :rtype: str
     """
     fsize = int(os.path.getsize(source))
     dest = os.path.join(dest_path, os.path.basename(source))
-    with open(source, 'rb') as f:
-        with open(dest, 'ab') as n:
+    partial = dest + '.partial'
+    copied = 0
+    try:
+        with open(source, 'rb') as f, open(partial, 'wb') as n:
             with tqdm(ncols=60, total=fsize, bar_format='{l_bar}{bar} | Remaining: {remaining}') as pbar:
-                buffer = bytearray()
                 while True:
-                    buf = f.read(8192)
-                    n.write(buf)
-                    if len(buf) == 0:
+                    try:
+                        buf = f.read(chunk_size)
+                    except OSError as e:
+                        pct = 100 * copied / fsize if fsize else 0
+                        raise OSError(e.errno, f'Read failed on {source} after {copied} of {fsize} bytes '
+                                               f'({pct:.0f}%): {e.strerror}. This usually means the SD card reader '
+                                               f'dropped off the USB bus. Unplug and replug the reader (or move the '
+                                               f'card to a different reader/port) and rerun the transfer.') from e
+                    if not buf:
                         break
-                    buffer += buf
+                    n.write(buf)
+                    copied += len(buf)
                     pbar.update(len(buf))
+            n.flush()
+            os.fsync(n.fileno())
+
+        if copied != fsize:
+            raise OSError(f'Size mismatch for {source}: copied {copied} bytes but source is {fsize} bytes.')
+        os.replace(partial, dest)
+    except BaseException:
+        if os.path.exists(partial):
+            os.remove(partial)
+        raise
+
+    return dest
 
 def get_all_files(card_path):
     """
